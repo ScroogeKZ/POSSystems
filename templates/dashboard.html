@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Басқару панелі / Панель управления - POS Жүйесі{% endblock %}
+{% block title %}{{ get_text('Басқару панелі', 'Панель управления') }} - {{ get_text('POS Жүйесі', 'POS Система') }}{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4">
     <div class="row">
         <div class="col-12">
-            <h1 class="mb-4">Басқару панелі / Панель управления</h1>
+            <h1 class="mb-4">{{ get_text('Басқару панелі', 'Панель управления') }}</h1>
         </div>
     </div>
     
@@ -18,7 +18,7 @@
                     <div class="d-flex justify-content-between">
                         <div>
                             <h4 class="card-title">{{ total_products }}</h4>
-                            <p class="card-text">Барлығы тауарлар / Всего товаров</p>
+                            <p class="card-text">{{ get_text('Барлығы тауарлар', 'Всего товаров') }}</p>
                         </div>
                         <div class="align-self-center">
                             <i class="fas fa-boxes fa-2x"></i>
@@ -33,7 +33,7 @@
                     <div class="d-flex justify-content-between">
                         <div>
                             <h4 class="card-title">{{ low_stock_count }}</h4>
-                            <p class="card-text">Аз қойма / Мало на складе</p>
+                            <p class="card-text">{{ get_text('Аз қойма', 'Мало на складе') }}</p>
                         </div>
                         <div class="align-self-center">
                             <i class="fas fa-exclamation-triangle fa-2x"></i>
@@ -48,7 +48,7 @@
                     <div class="d-flex justify-content-between">
                         <div>
                             <h4 class="card-title">{{ "%.0f"|format(today_sales) }} ₸</h4>
-                            <p class="card-text">Бүгінгі сатулар / Продажи сегодня</p>
+                            <p class="card-text">{{ get_text('Бүгінгі сатулар', 'Продажи сегодня') }}</p>
                         </div>
                         <div class="align-self-center">
                             <i class="fas fa-money-bill fa-2x"></i>
@@ -62,8 +62,8 @@
                 <div class="card-body">
                     <div class="d-flex justify-content-between">
                         <div>
-                            <a href="{{ url_for('pos') }}" class="btn btn-light btn-sm">Кассаны ашу / Открыть кассу</a>
-                            <p class="card-text mt-2">Жылдам қатынау / Быстрый доступ</p>
+                            <a href="{{ url_for('pos') }}" class="btn btn-light btn-sm">{{ get_text('Кассаны ашу', 'Открыть кассу') }}</a>
+                            <p class="card-text mt-2">{{ get_text('Жылдам қатынау', 'Быстрый доступ') }}</p>
                         </div>
                         <div class="align-self-center">
                             <i class="fas fa-cash-register fa-2x"></i>
@@ -79,7 +79,7 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="card-title mb-0">Соңғы транзакциялар / Последние транзакции</h5>
+                    <h5 class="card-title mb-0">{{ get_text('Соңғы транзакциялар', 'Последние транзакции') }}</h5>
                 </div>
                 <div class="card-body">
                     {% if recent_transactions %}
@@ -87,11 +87,11 @@
                             <table class="table table-striped">
                                 <thead>
                                     <tr>
-                                        <th>Чек № / №</th>
-                                        <th>Уақыт / Время</th>
-                                        <th>Касса жұмысшысы / Кассир</th>
-                                        <th>Сома / Сумма</th>
-                                        <th>Күйі / Статус</th>
+                                        <th>{{ get_text('Чек №', '№') }}</th>
+                                        <th>{{ get_text('Уақыт', 'Время') }}</th>
+                                        <th>{{ get_text('Касса жұмысшысы', 'Кассир') }}</th>
+                                        <th>{{ get_text('Сома', 'Сумма') }}</th>
+                                        <th>{{ get_text('Күйі', 'Статус') }}</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -102,7 +102,7 @@
                                         <td>{{ transaction.cashier_name or '-' }}</td>
                                         <td>{{ "%.2f"|format(transaction.total_amount) }} ₸</td>
                                         <td>
-                                            <span class="badge bg-success">Аяқталды / Завершено</span>
+                                            <span class="badge bg-success">{{ get_text('Аяқталды', 'Завершено') }}</span>
                                         </td>
                                     </tr>
                                     {% endfor %}
@@ -110,7 +110,7 @@
                             </table>
                         </div>
                     {% else %}
-                        <p class="text-muted">Бүгін транзакциялар жоқ / Нет транзакций за сегодня</p>
+                        <p class="text-muted">{{ get_text('Бүгін транзакциялар жоқ', 'Нет транзакций за сегодня') }}</p>
                     {% endif %}
                 </div>
             </div>

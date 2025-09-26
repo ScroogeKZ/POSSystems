@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Кассалық бөлім / Касса - POS Жүйесі{% endblock %}
+{% block title %}{{ get_text('Кассалық бөлім', 'Касса') }} - {{ get_text('POS Жүйесі', 'POS Система') }}{% endblock %}
 
 {% block content %}
 <div class="modern-pos-interface">
@@ -9,20 +9,20 @@
             <!-- Left Panel - Product Search -->
             <div class="col-lg-6 search-panel">
                 <div class="search-header">
-                    <h4>Тауарларды іздеу / Поиск товаров</h4>
+                    <h4>{{ get_text('Тауарларды іздеу', 'Поиск товаров') }}</h4>
                 </div>
                 
                 <div class="search-controls">
                     <div class="row g-3">
                         <div class="col-8">
                             <input type="text" id="productSearch" class="form-control form-control-lg" 
-                                   placeholder="Тауар атауын немесе артикулын енгізіңіз..." autocomplete="off">
+                                   placeholder="{{ get_text('Тауар атауын немесе артикулын енгізіңіз...', 'Введите название товара или артикул...') }}" autocomplete="off">
                         </div>
                         <div class="col-4">
                             <select id="categoryFilter" class="form-select form-select-lg">
-                                <option value="">Все категории</option>
+                                <option value="">{{ get_text('Барлық санаттар', 'Все категории') }}</option>
                                 {% for category in categories %}
-                                <option value="{{ category.id }}">{{ category.name }}</option>
+                                <option value="{{ category.id }}">{{ category.translated_name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -37,7 +37,7 @@
                 <!-- Transaction Header -->
                 <div class="transaction-header">
                     <div class="d-flex justify-content-between align-items-center">
-                        <h4>Чек / Транзакция</h4>
+                        <h4>{{ get_text('Чек', 'Транзакция') }}</h4>
                         <div id="transactionInfo" style="display: none;">
                             <span class="badge bg-primary fs-6" id="transactionNumber"></span>
                         </div>

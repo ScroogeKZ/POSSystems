@@ -45,11 +45,11 @@ def initialize_sample_data():
     """Initialize database with sample data if empty"""
     if Category.query.count() == 0:
         # Create categories for Kazakhstan market
-        category1 = Category(name="Сүт өнімдері / Молочные продукты", description="Сүт, ірімшік, йогурт / Молоко, сыр, йогурты")
-        category2 = Category(name="Нан өнімдері / Хлебобулочные", description="Нан, тоқаш, печенье / Хлеб, лепешки, выпечка")
-        category3 = Category(name="Сусындар / Напитки", description="Шырын, газдалған сусындар, су / Соки, газированные напитки, вода")
-        category4 = Category(name="Ет өнімдері / Мясные продукты", description="Ет, шұжық, деликатестер / Мясо, колбасы, деликатесы")
-        category5 = Category(name="Жемістер мен көкөністер / Фрукты и овощи", description="Жаңа жемістер мен көкөністер / Свежие фрукты и овощи")
+        category1 = Category(name="Сүт өнімдері", description="Сүт, ірімшік, йогурт")
+        category2 = Category(name="Нан өнімдері", description="Нан, тоқаш, печенье")
+        category3 = Category(name="Сусындар", description="Шырын, газдалған сусындар, су")
+        category4 = Category(name="Ет өнімдері", description="Ет, шұжық, деликатестер")
+        category5 = Category(name="Жемістер мен көкөністер", description="Жаңа жемістер мен көкөністер")
         
         categories = [category1, category2, category3, category4, category5]
         
@@ -69,19 +69,19 @@ def initialize_sample_data():
         db.session.commit()
         
         # Create sample products for Kazakhstan market
-        product1 = Product(sku="MLK001", name="Сүт / Молоко 3.2% 1л", price=320.00, cost_price=220.00, 
+        product1 = Product(sku="MLK001", name="Сүт 3.2% 1л", price=320.00, cost_price=220.00, 
                            stock_quantity=50, min_stock_level=10, unit_type=UnitType.PIECE,
                            supplier=supplier, category=categories[0])
-        product2 = Product(sku="BRD001", name="Нан ақ / Хлеб белый", price=180.00, cost_price=120.00,
+        product2 = Product(sku="BRD001", name="Нан ақ", price=180.00, cost_price=120.00,
                            stock_quantity=30, min_stock_level=5, unit_type=UnitType.PIECE,
                            supplier=supplier, category=categories[1])
-        product3 = Product(sku="JCE001", name="Апельсин шырыны / Сок апельсиновый 1л", price=580.00, cost_price=410.00,
+        product3 = Product(sku="JCE001", name="Апельсин шырыны 1л", price=580.00, cost_price=410.00,
                            stock_quantity=25, min_stock_level=8, unit_type=UnitType.PIECE,
                            supplier=supplier, category=categories[2])
-        product4 = Product(sku="CHE001", name="Ірімшік / Сыр казахстанский", price=2200.00, cost_price=1560.00,
+        product4 = Product(sku="CHE001", name="Ірімшік қазақстандық", price=2200.00, cost_price=1560.00,
                            stock_quantity=15, min_stock_level=3, unit_type=UnitType.KILOGRAM,
                            supplier=supplier, category=categories[0])
-        product5 = Product(sku="APL001", name="Алма қызыл / Яблоки красные", price=890.00, cost_price=590.00,
+        product5 = Product(sku="APL001", name="Алма қызыл", price=890.00, cost_price=590.00,
                            stock_quantity=40, min_stock_level=10, unit_type=UnitType.KILOGRAM,
                            supplier=supplier, category=categories[4])
         
@@ -94,6 +94,62 @@ def initialize_sample_data():
 
 # Create the Flask app
 app = create_app()
+
+# Language support
+def get_language():
+    """Get current language from session"""
+    return session.get('language', 'kk')  # Default to Kazakh
+
+def get_text(kk_text, ru_text):
+    """Get text based on current language"""
+    if get_language() == 'ru':
+        return ru_text
+    return kk_text
+
+# Translation dictionaries
+TRANSLATIONS = {
+    'categories': {
+        'Сүт өнімдері': {'kk': 'Сүт өнімдері', 'ru': 'Молочные продукты'},
+        'Нан өнімдері': {'kk': 'Нан өнімдері', 'ru': 'Хлебобулочные'},
+        'Сусындар': {'kk': 'Сусындар', 'ru': 'Напитки'},
+        'Ет өнімдері': {'kk': 'Ет өнімдері', 'ru': 'Мясные продукты'},
+        'Жемістер мен көкөністер': {'kk': 'Жемістер мен көкөністер', 'ru': 'Фрукты и овощи'},
+    },
+    'products': {
+        'Сүт 3.2% 1л': {'kk': 'Сүт 3.2% 1л', 'ru': 'Молоко 3.2% 1л'},
+        'Нан ақ': {'kk': 'Нан ақ', 'ru': 'Хлеб белый'},
+        'Апельсин шырыны 1л': {'kk': 'Апельсин шырыны 1л', 'ru': 'Сок апельсиновый 1л'},
+        'Ірімшік қазақстандық': {'kk': 'Ірімшік қазақстандық', 'ru': 'Сыр казахстанский'},
+        'Алма қызыл': {'kk': 'Алма қызыл', 'ru': 'Яблоки красные'},
+    },
+    'units': {
+        'шт.': {'kk': 'дана', 'ru': 'шт.'},
+        'кг.': {'kk': 'кг.', 'ru': 'кг.'},
+        'л.': {'kk': 'л.', 'ru': 'л.'},
+        'м.': {'kk': 'м.', 'ru': 'м.'},
+        'упак.': {'kk': 'орам', 'ru': 'упак.'},
+    }
+}
+
+def translate_name(original_name, category='products'):
+    """Translate product/category name based on current language"""
+    translations = TRANSLATIONS.get(category, {})
+    if original_name in translations:
+        return translations[original_name].get(get_language(), original_name)
+    return original_name
+
+# Language switcher route
+@app.route('/set_language/<language>')
+def set_language(language):
+    """Set language preference"""
+    if language in ['kk', 'ru']:
+        session['language'] = language
+    return redirect(request.referrer or url_for('index'))
+
+# Make language functions available in templates
+@app.context_processor
+def inject_language_functions():
+    return dict(get_language=get_language, get_text=get_text, translate_name=translate_name)
 
 # Routes
 @app.route('/')
@@ -124,6 +180,9 @@ def index():
 def pos():
     """POS Terminal Interface"""
     categories = Category.query.all()
+    # Translate category names for current language
+    for category in categories:
+        category.translated_name = translate_name(category.name, 'categories')
     return render_template('pos.html', categories=categories)
 
 @app.route('/api/products/search')
@@ -154,10 +213,10 @@ def search_products():
     return jsonify([{
         'id': p.id,
         'sku': p.sku,
-        'name': p.name,
+        'name': translate_name(p.name, 'products'),
         'price': float(p.price),
         'stock_quantity': p.stock_quantity,
-        'unit_type': p.unit_type.value,
+        'unit_type': translate_name(p.unit_type.value, 'units'),
         'image_filename': p.image_filename
     } for p in products])
 
@@ -187,6 +246,13 @@ def inventory():
     products = query.order_by(Product.name).all()
     categories = Category.query.all()
     suppliers = Supplier.query.filter_by(is_active=True).all()
+    
+    # Translate names for current language
+    for product in products:
+        product.translated_name = translate_name(product.name, 'products')
+        product.translated_unit = translate_name(product.unit_type.value, 'units')
+    for category in categories:
+        category.translated_name = translate_name(category.name, 'categories')
     
     return render_template('inventory.html', 
                          products=products, 
@@ -798,12 +864,12 @@ def get_sales_summary():
     
     return jsonify({
         'today': {
-            'revenue': float(today_sales[0] or 0),
-            'transactions': today_sales[1] or 0
+            'revenue': float(today_sales[0] if today_sales and today_sales[0] else 0),
+            'transactions': today_sales[1] if today_sales and today_sales[1] else 0
         },
         'month': {
-            'revenue': float(month_sales[0] or 0),
-            'transactions': month_sales[1] or 0
+            'revenue': float(month_sales[0] if month_sales and month_sales[0] else 0),
+            'transactions': month_sales[1] if month_sales and month_sales[1] else 0
         },
         'low_stock_count': low_stock_products
     })

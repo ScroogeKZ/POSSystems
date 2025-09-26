@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="{{ 'kk' if get_language() == 'kk' else 'ru' }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}POS Жүйесі / POS Система{% endblock %}</title>
+    <title>{% block title %}{{ get_text('POS Жүйесі', 'POS Система') }}{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
@@ -254,18 +254,33 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container-fluid">
             <a class="navbar-brand" href="{{ url_for('index') }}">
-                <i class="fas fa-cash-register me-2"></i>POS Жүйесі / POS Система
+                <i class="fas fa-cash-register me-2"></i>{{ get_text('POS Жүйесі', 'POS Система') }}
             </a>
             <div class="navbar-nav ms-auto">
                 <a class="nav-link" href="{{ url_for('pos') }}">
-                    <i class="fas fa-shopping-cart me-1"></i>Кассалық бөлім / Касса
+                    <i class="fas fa-shopping-cart me-1"></i>{{ get_text('Кассалық бөлім', 'Касса') }}
                 </a>
                 <a class="nav-link" href="{{ url_for('inventory') }}">
-                    <i class="fas fa-boxes me-1"></i>Қойма / Инвентарь
+                    <i class="fas fa-boxes me-1"></i>{{ get_text('Қойма', 'Инвентарь') }}
                 </a>
                 <a class="nav-link" href="{{ url_for('reports') }}">
-                    <i class="fas fa-chart-bar me-1"></i>Есептер / Отчеты
+                    <i class="fas fa-chart-bar me-1"></i>{{ get_text('Есептер', 'Отчеты') }}
                 </a>
+                <!-- Language Switcher -->
+                <div class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" id="languageDropdown" role="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-globe me-1"></i>
+                        {{ 'ҚАЗ' if get_language() == 'kk' else 'РУС' }}
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><a class="dropdown-item {% if get_language() == 'kk' %}active{% endif %}" href="{{ url_for('set_language', language='kk') }}">
+                            🇰🇿 Қазақша
+                        </a></li>
+                        <li><a class="dropdown-item {% if get_language() == 'ru' %}active{% endif %}" href="{{ url_for('set_language', language='ru') }}">
+                            🇷🇺 Русский
+                        </a></li>
+                    </ul>
+                </div>
             </div>
         </div>
     </nav>
