@@ -3,8 +3,12 @@ from datetime import timedelta
 
 class Config:
     SECRET_KEY = os.environ.get('SESSION_SECRET')
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///pos_system.db'
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_recycle": 300,
+        "pool_pre_ping": True,
+    }
     UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'images')
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
     

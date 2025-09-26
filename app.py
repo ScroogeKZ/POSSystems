@@ -1,16 +1,21 @@
 import os
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
 from config import Config
+from werkzeug.middleware.proxy_fix import ProxyFix
 from models import db, Product, Supplier, Category, Transaction, TransactionItem, Payment, PurchaseOrder, DiscountRule
 from models import PaymentMethod, TransactionStatus, UnitType
 from datetime import datetime, timedelta
 from sqlalchemy import or_, desc, func
+from decimal import Decimal
 import secrets
 import string
 
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+    
+    # Add ProxyFix for Replit environment
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
     
     # Initialize extensions
     db.init_app(app)
@@ -280,12 +285,12 @@ def add_item_to_transaction():
         if not product:
             return jsonify({'success': False, 'error': 'Товар не найден'}), 404
         
-        quantity = float(data['quantity'])
+        quantity = Decimal(str(data['quantity']))
         if quantity <= 0:
             return jsonify({'success': False, 'error': 'Неверное количество'}), 400
         
         # Check stock
-        if product.stock_quantity < quantity:
+        if product.stock_quantity < float(quantity):
             return jsonify({'success': False, 'error': 'Недостаточно товара на складе'}), 400
         
         # Create new item
@@ -294,7 +299,8 @@ def add_item_to_transaction():
             product_id=product.id,
             quantity=quantity,
             unit_price=product.price,
-            total_price=quantity * product.price
+            total_price=quantity * product.price,
+            discount_amount=Decimal('0.00')
         )
         db.session.add(item)
         
@@ -374,8 +380,8 @@ def complete_transaction():
             return jsonify({'success': False, 'error': 'Не указаны способы оплаты'}), 400
         
         # Validate payment amounts
-        total_payment = sum(float(p['amount']) for p in payments)
-        if abs(total_payment - float(transaction.total_amount)) > 0.01:
+        total_payment = sum(Decimal(str(p['amount'])) for p in payments)
+        if abs(total_payment - transaction.total_amount) > Decimal('0.01'):
             return jsonify({'success': False, 'error': 'Сумма оплаты не совпадает с общей суммой'}), 400
         
         # Create payment records
@@ -383,7 +389,7 @@ def complete_transaction():
             payment = Payment(
                 transaction_id=transaction.id,
                 method=PaymentMethod(payment_data['method']),
-                amount=payment_data['amount'],
+                amount=Decimal(str(payment_data['amount'])),
                 reference_number=payment_data.get('reference_number')
             )
             db.session.add(payment)
@@ -495,8 +501,8 @@ def create_product():
             name=data['name'],
             description=data.get('description', ''),
             unit_type=UnitType(data.get('unit_type', 'шт.')),
-            price=float(data['price']),
-            cost_price=float(data.get('cost_price', 0)),
+            price=Decimal(str(data['price'])),
+            cost_price=Decimal(str(data.get('cost_price', 0))),
             stock_quantity=int(data.get('stock_quantity', 0)),
             min_stock_level=int(data.get('min_stock_level', 0)),
             supplier_id=data.get('supplier_id'),
@@ -539,9 +545,9 @@ def update_product(product_id):
         if 'unit_type' in data:
             product.unit_type = UnitType(data['unit_type'])
         if 'price' in data:
-            product.price = float(data['price'])
+            product.price = Decimal(str(data['price']))
         if 'cost_price' in data:
-            product.cost_price = float(data['cost_price'])
+            product.cost_price = Decimal(str(data['cost_price']))
         if 'stock_quantity' in data:
             product.stock_quantity = int(data['stock_quantity'])
         if 'min_stock_level' in data:
@@ -804,10 +810,16 @@ def get_sales_summary():
 
 def update_transaction_totals(transaction):
     """Update transaction totals based on items"""
-    subtotal = sum(item.total_price - item.discount_amount for item in transaction.items)
+    # Ensure all values are Decimal for proper arithmetic
+    subtotal = Decimal('0.00')
+    for item in transaction.items:
+        item_total = item.total_price or Decimal('0.00')
+        item_discount = item.discount_amount or Decimal('0.00')
+        subtotal += (item_total - item_discount)
+    
     transaction.subtotal = subtotal
-    transaction.tax_amount = subtotal * 0.12  # 12% VAT (Kazakhstan rate)
-    transaction.total_amount = subtotal + transaction.tax_amount - transaction.discount_amount
+    transaction.tax_amount = subtotal * Decimal('0.12')  # 12% VAT (Kazakhstan rate)
+    transaction.total_amount = subtotal + transaction.tax_amount - (transaction.discount_amount or Decimal('0.00'))
 
 @app.errorhandler(404)
 def not_found_error(error):

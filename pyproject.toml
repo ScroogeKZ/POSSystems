@@ -1,12 +1,22 @@
 [project]
-name = "repl-nix-workspace"
+name = "pos-system"
 version = "0.1.0"
-description = "Add your description here"
+description = "Point of Sale System for Kazakhstan market"
 requires-python = ">=3.11"
 dependencies = [
+    "email-validator>=2.3.0",
     "flask>=3.1.2",
     "flask-sqlalchemy>=3.1.1",
     "flask-wtf>=1.2.2",
+    "gunicorn>=23.0.0",
     "pillow>=11.3.0",
+    "psycopg2-binary>=2.9.10",
+    "sqlalchemy>=2.0.43",
     "wtforms>=3.2.1",
 ]
+
+[tool.setuptools]
+packages = []
+
+[tool.setuptools.package-data]
+"*" = ["templates/**/*", "static/**/*"]
