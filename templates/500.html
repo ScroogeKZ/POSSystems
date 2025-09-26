@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Ошибка сервера - POS Система{% endblock %}
+
+{% block content %}
+<div class="container text-center py-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <i class="fas fa-server fa-5x text-danger mb-4"></i>
+            <h1 class="display-4">500</h1>
+            <h2 class="mb-4">Внутренняя ошибка сервера</h2>
+            <p class="lead">Произошла ошибка при обработке запроса. Попробуйте еще раз или обратитесь к администратору.</p>
+            <a href="{{ url_for('index') }}" class="btn btn-primary btn-lg">
+                <i class="fas fa-home"></i> Вернуться на главную
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Қойма / Инвентарь - POS Жүйесі{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>Қойма басқаруы / Управление инвентарем</h1>
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addProductModal">
+                    <i class="fas fa-plus"></i> Тауар қосу / Добавить товар
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <input type="text" class="form-control" placeholder="Атау немесе артикул бойынша іздеу... / Поиск по названию или артикулу...">
+        </div>
+        <div class="col-md-3">
+            <select class="form-select">
+                <option value="">Барлық санаттар / Все категории</option>
+                {% for category in categories %}
+                <option value="{{ category.id }}">{{ category.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="lowStockOnly">
+                <label class="form-check-label" for="lowStockOnly">
+                    Тек аз қалдықты тауарлар / Только товары с низким остатком
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- Products Table -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Артикул / SKU</th>
+                                    <th>Атауы / Название</th>
+                                    <th>Санат / Категория</th>
+                                    <th>Баға / Цена</th>
+                                    <th>Қалдық / Остаток</th>
+                                    <th>Өлш. бірл. / Ед. изм.</th>
+                                    <th>Жеткізуші / Поставщик</th>
+                                    <th>Әрекеттер / Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for product in products %}
+                                <tr{% if product.is_low_stock %} class="table-warning"{% endif %}>
+                                    <td>{{ product.sku }}</td>
+                                    <td>
+                                        <strong>{{ product.name }}</strong>
+                                        {% if product.description %}
+                                        <br><small class="text-muted">{{ product.description }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ product.category.name if product.category else '-' }}</td>
+                                    <td>{{ "%.2f"|format(product.price) }} ₸</td>
+                                    <td>
+                                        <span{% if product.is_low_stock %} class="low-stock"{% endif %}>
+                                            {{ product.stock_quantity }}
+                                        </span>
+                                        {% if product.min_stock_level > 0 %}
+                                        <br><small class="text-muted">Мин / Ең аз: {{ product.min_stock_level }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ product.unit_type.value }}</td>
+                                    <td>{{ product.supplier.name if product.supplier else '-' }}</td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" title="Өңдеу / Редактировать">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button class="btn btn-outline-success" title="Қалдықты өзгерту / Изменить остаток">
+                                                <i class="fas fa-warehouse"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

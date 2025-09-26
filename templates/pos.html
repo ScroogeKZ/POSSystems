@@ -1,0 +1,524 @@
+{% extends "base.html" %}
+
+{% block title %}Кассалық бөлім / Касса - POS Жүйесі{% endblock %}
+
+{% block content %}
+<div class="pos-interface">
+    <div class="container-fluid py-3">
+        <div class="row">
+            <!-- Product Search and Categories -->
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">Тауарларды іздеу / Поиск товаров</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Search Bar -->
+                        <div class="row mb-3">
+                            <div class="col-md-8">
+                                <input type="text" id="productSearch" class="form-control form-control-lg" 
+                                       placeholder="Тауар атауын немесе артикулын енгізіңіз... / Введите название товара или артикул..." autocomplete="off">
+                            </div>
+                            <div class="col-md-4">
+                                <select id="categoryFilter" class="form-select form-select-lg">
+                                    <option value="">Барлық санаттар / Все категории</option>
+                                    {% for category in categories %}
+                                    <option value="{{ category.id }}">{{ category.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- Search Results -->
+                        <div id="searchResults" class="search-results"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Shopping Cart -->
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="card-title mb-0">Себет / Корзина</h5>
+                        <button id="clearCart" class="btn btn-outline-danger btn-sm">
+                            <i class="fas fa-trash"></i> Тазалау / Очистить
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <!-- Current Transaction Info -->
+                        <div id="transactionInfo" class="mb-3" style="display: none;">
+                            <div class="alert alert-info">
+                                <strong>Чек:</strong> <span id="transactionNumber"></span>
+                            </div>
+                        </div>
+
+                        <!-- Cart Items -->
+                        <div id="cartItems">
+                            <p class="text-muted text-center">Себет бос / Корзина пуста</p>
+                        </div>
+
+                        <!-- Cart Total -->
+                        <div class="border-top pt-3 mt-3">
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>Аралық сома / Подитог:</span>
+                                <span id="subtotal">0.00 ₸</span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-2">
+                                <span>ҚҚС (12%) / НДС (12%):</span>
+                                <span id="taxAmount">0.00 ₸</span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-3">
+                                <strong>Барлығы / Итого:</strong>
+                                <strong id="totalAmount">0.00 ₸</strong>
+                            </div>
+
+                            <!-- Discount Section -->
+                            <div class="border-top pt-3 mt-3" id="discountSection" style="display: none;">
+                                <div class="row">
+                                    <div class="col-6">
+                                        <select id="discountType" class="form-select form-select-sm">
+                                            <option value="percentage">Жеңілдік % / Скидка %</option>
+                                            <option value="fixed_amount">Жеңілдік ₸ / Скидка ₸</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-4">
+                                        <input type="number" id="discountValue" class="form-control form-control-sm" 
+                                               placeholder="Размер" min="0" step="0.01">
+                                    </div>
+                                    <div class="col-2">
+                                        <button id="applyDiscount" class="btn btn-outline-primary btn-sm">
+                                            <i class="fas fa-percent"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Action Buttons -->
+                            <div class="d-grid gap-2">
+                                <button id="startTransaction" class="btn btn-primary btn-lg">
+                                    <i class="fas fa-play"></i> Сатуды бастау / Начать продажу
+                                </button>
+                                <button id="paymentBtn" class="btn btn-success btn-lg" style="display: none;">
+                                    <i class="fas fa-credit-card"></i> Төлем / Оплата
+                                </button>
+                                <div class="btn-group" style="display: none;" id="transactionActions">
+                                    <button id="applyDiscountBtn" class="btn btn-outline-info">
+                                        <i class="fas fa-percent"></i> Жеңілдік / Скидка
+                                    </button>
+                                    <button id="suspendTransaction" class="btn btn-warning">
+                                        <i class="fas fa-pause"></i> Кідірту / Отложить
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Payment Modal -->
+<div class="modal fade" id="paymentModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Төлем / Оплата</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Төлеуге / К оплате: <strong id="paymentAmount">0.00 ₸</strong></label>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label">Төлем тәсілі / Способ оплаты:</label>
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="paymentMethod" value="cash" id="cashPayment" checked>
+                        <label class="btn btn-outline-primary" for="cashPayment">Қолма-қол / Наличные</label>
+                        
+                        <input type="radio" class="btn-check" name="paymentMethod" value="card" id="cardPayment">
+                        <label class="btn btn-outline-primary" for="cardPayment">Карта</label>
+                    </div>
+                </div>
+                
+                <div id="cashInput" class="mb-3">
+                    <label class="form-label">Қолма-қолмен алынды / Получено наличными:</label>
+                    <input type="number" id="cashReceived" class="form-control" step="0.01" min="0">
+                    <div class="mt-2">
+                        <span>Қайтарым / Сдача: </span><strong id="changeAmount">0.00 ₸</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Бас тарту / Отмена</button>
+                <button type="button" id="completePayment" class="btn btn-success">Төлемді аяқтау / Завершить оплату</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// POS JavaScript functionality will be added here
+let currentTransaction = null;
+let cart = [];
+
+// Initialize POS interface
+document.addEventListener('DOMContentLoaded', function() {
+    initializeEventListeners();
+});
+
+function initializeEventListeners() {
+    // Product search
+    const searchInput = document.getElementById('productSearch');
+    const categoryFilter = document.getElementById('categoryFilter');
+    
+    searchInput.addEventListener('input', debounce(searchProducts, 300));
+    categoryFilter.addEventListener('change', searchProducts);
+    
+    // Cart actions
+    document.getElementById('startTransaction').addEventListener('click', startNewTransaction);
+    document.getElementById('clearCart').addEventListener('click', clearCart);
+    document.getElementById('paymentBtn').addEventListener('click', showPaymentModal);
+    document.getElementById('completePayment').addEventListener('click', completePayment);
+    
+    // Discount actions
+    document.getElementById('applyDiscountBtn').addEventListener('click', toggleDiscountSection);
+    document.getElementById('applyDiscount').addEventListener('click', applyDiscount);
+    
+    // Payment method change
+    document.querySelectorAll('input[name="paymentMethod"]').forEach(radio => {
+        radio.addEventListener('change', togglePaymentInputs);
+    });
+    
+    // Cash input for change calculation
+    document.getElementById('cashReceived').addEventListener('input', calculateChange);
+}
+
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+async function searchProducts() {
+    const query = document.getElementById('productSearch').value;
+    const categoryId = document.getElementById('categoryFilter').value;
+    
+    if (query.length < 2 && !categoryId) {
+        document.getElementById('searchResults').innerHTML = '';
+        return;
+    }
+    
+    try {
+        const params = new URLSearchParams();
+        if (query) params.append('q', query);
+        if (categoryId) params.append('category_id', categoryId);
+        
+        const response = await fetch(`/api/products/search?${params}`);
+        const products = await response.json();
+        
+        displaySearchResults(products);
+    } catch (error) {
+        console.error('Search error:', error);
+    }
+}
+
+function displaySearchResults(products) {
+    const resultsContainer = document.getElementById('searchResults');
+    
+    if (products.length === 0) {
+        resultsContainer.innerHTML = '<p class="text-muted">Тауарлар табылмады / Товары не найдены</p>';
+        return;
+    }
+    
+    const html = products.map(product => `
+        <div class="product-card card mb-2" onclick="addToCart(${product.id}, '${product.name}', ${product.price})">
+            <div class="card-body py-2">
+                <div class="row align-items-center">
+                    <div class="col-8">
+                        <h6 class="card-title mb-1">${product.name}</h6>
+                        <small class="text-muted">Артикул: ${product.sku}</small>
+                    </div>
+                    <div class="col-4 text-end">
+                        <strong>${product.price.toFixed(2)} ₸</strong>
+                        <br>
+                        <small class="text-muted">На складе: ${product.stock_quantity} ${product.unit_type}</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    resultsContainer.innerHTML = html;
+}
+
+async function startNewTransaction() {
+    try {
+        const response = await fetch('/api/transaction/start', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                cashier_name: 'Кассир'
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            currentTransaction = result;
+            document.getElementById('transactionNumber').textContent = result.transaction_number;
+            document.getElementById('transactionInfo').style.display = 'block';
+            document.getElementById('startTransaction').style.display = 'none';
+            document.getElementById('paymentBtn').style.display = 'block';
+            document.getElementById('suspendTransaction').style.display = 'block';
+        } else {
+            alert('Ошибка создания транзакции: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Transaction start error:', error);
+        alert('Ошибка связи с сервером');
+    }
+}
+
+async function addToCart(productId, productName, price) {
+    if (!currentTransaction) {
+        alert('Сначала начните новую продажу');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/transaction/add_item', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                product_id: productId,
+                quantity: 1
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            updateCartDisplay();
+        } else {
+            alert('Ошибка добавления товара: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Add to cart error:', error);
+        alert('Ошибка связи с сервером');
+    }
+}
+
+async function updateCartDisplay() {
+    try {
+        const response = await fetch('/api/transaction/current');
+        const result = await response.json();
+        
+        if (result.success) {
+            const transaction = result.transaction;
+            const cartContainer = document.getElementById('cartItems');
+            
+            if (transaction.items.length === 0) {
+                cartContainer.innerHTML = '<p class="text-muted text-center">Корзина пуста</p>';
+            } else {
+                const itemsHtml = transaction.items.map(item => `
+                    <div class="cart-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>${item.product_name}</strong>
+                                <br>
+                                <small class="text-muted">${item.sku}</small>
+                            </div>
+                            <div class="text-end">
+                                <div>${item.quantity} × ${item.unit_price.toFixed(2)} ₸</div>
+                                <strong>${item.total_price.toFixed(2)} ₸</strong>
+                                <br>
+                                <button class="btn btn-outline-danger btn-sm" onclick="removeFromCart(${item.id})">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+                
+                cartContainer.innerHTML = itemsHtml;
+            }
+            
+            // Update totals
+            document.getElementById('subtotal').textContent = transaction.subtotal.toFixed(2) + ' ₸';
+            document.getElementById('taxAmount').textContent = transaction.tax_amount.toFixed(2) + ' ₸';
+            document.getElementById('totalAmount').textContent = transaction.total_amount.toFixed(2) + ' ₸';
+        }
+    } catch (error) {
+        console.error('Cart update error:', error);
+    }
+}
+
+function clearCart() {
+    cart = [];
+    updateCartTotals();
+    document.getElementById('cartItems').innerHTML = '<p class="text-muted text-center">Корзина пуста</p>';
+}
+
+function updateCartTotals() {
+    const subtotal = cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const tax = subtotal * 0.12;
+    const total = subtotal + tax;
+    
+    document.getElementById('subtotal').textContent = subtotal.toFixed(2) + ' ₸';
+    document.getElementById('taxAmount').textContent = tax.toFixed(2) + ' ₸';
+    document.getElementById('totalAmount').textContent = total.toFixed(2) + ' ₸';
+}
+
+function showPaymentModal() {
+    const total = document.getElementById('totalAmount').textContent;
+    document.getElementById('paymentAmount').textContent = total;
+    
+    const modal = new bootstrap.Modal(document.getElementById('paymentModal'));
+    modal.show();
+}
+
+function togglePaymentInputs() {
+    const cashInput = document.getElementById('cashInput');
+    const selectedMethod = document.querySelector('input[name="paymentMethod"]:checked').value;
+    
+    if (selectedMethod === 'cash') {
+        cashInput.style.display = 'block';
+    } else {
+        cashInput.style.display = 'none';
+    }
+}
+
+function calculateChange() {
+    const total = parseFloat(document.getElementById('paymentAmount').textContent.replace(' ₸', ''));
+    const received = parseFloat(document.getElementById('cashReceived').value) || 0;
+    const change = received - total;
+    
+    document.getElementById('changeAmount').textContent = Math.max(0, change).toFixed(2) + ' ₸';
+}
+
+async function completePayment() {
+    const paymentMethod = document.querySelector('input[name="paymentMethod"]:checked').value;
+    const totalAmount = parseFloat(document.getElementById('paymentAmount').textContent.replace(' ₸', ''));
+    
+    const payments = [{
+        method: paymentMethod,
+        amount: totalAmount
+    }];
+    
+    // Add reference number for card payments
+    if (paymentMethod === 'card') {
+        payments[0].reference_number = 'CARD_' + Date.now();
+    }
+    
+    try {
+        const response = await fetch('/api/transaction/complete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ payments })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(`Төлем сәтті аяқталды! / Оплата успешно завершена!\nЧек: ${result.transaction_number}\nСумма: ${result.total_amount.toFixed(2)} ₸`);
+            
+            // Reset interface
+            location.reload();
+        } else {
+            alert('Ошибка оплаты: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Payment error:', error);
+        alert('Ошибка связи с сервером');
+    }
+}
+
+async function removeFromCart(itemId) {
+    try {
+        const response = await fetch('/api/transaction/remove_item', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                item_id: itemId
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            updateCartDisplay();
+        } else {
+            alert('Ошибка удаления товара: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Remove item error:', error);
+        alert('Ошибка связи с сервером');
+    }
+}
+
+function toggleDiscountSection() {
+    const discountSection = document.getElementById('discountSection');
+    if (discountSection.style.display === 'none') {
+        discountSection.style.display = 'block';
+    } else {
+        discountSection.style.display = 'none';
+    }
+}
+
+async function applyDiscount() {
+    const discountType = document.getElementById('discountType').value;
+    const discountValue = parseFloat(document.getElementById('discountValue').value);
+    
+    if (!discountValue || discountValue <= 0) {
+        alert('Введите корректный размер скидки');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/transaction/apply_discount', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                type: discountType,
+                value: discountValue
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(result.message);
+            updateCartDisplay();
+            toggleDiscountSection();
+            // Clear discount fields
+            document.getElementById('discountValue').value = '';
+        } else {
+            alert('Ошибка применения скидки: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Discount error:', error);
+        alert('Ошибка связи с сервером');
+    }
+}
+</script>
+{% endblock %}

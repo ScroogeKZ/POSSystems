@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Есептер / Отчеты - POS Жүйесі{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="mb-4">Есептер мен талдаулар / Отчеты и аналитика</h1>
+        </div>
+    </div>
+
+    <!-- Date Range Filter -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Есеп кезеңі / Период отчета</h5>
+                    <form method="GET">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <label class="form-label">Басталу күні / Начальная дата</label>
+                                <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Аяқталу күні / Конечная дата</label>
+                                <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary mt-3">Есепті жаңарту / Обновить отчет</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sales Chart -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Сату динамикасы / Динамика продаж</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="salesChart" height="100"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Products -->
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Сатулар бойынша топ тауарлар / Топ товаров по продажам</h5>
+                </div>
+                <div class="card-body">
+                    {% if top_products %}
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Тауар / Товар</th>
+                                        <th>Сатылды / Продано</th>
+                                        <th>Кіріс / Выручка</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for product in top_products %}
+                                    <tr>
+                                        <td>{{ product.name }}</td>
+                                        <td>{{ "%.0f"|format(product.total_sold) }}</td>
+                                        <td>{{ "%.2f"|format(product.total_revenue) }} ₸</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <p class="text-muted">Таңдалған кезең үшін деректер жоқ / Нет данных за выбранный период</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Жиынтық ақпарат / Сводная информация</h5>
+                </div>
+                <div class="card-body">
+                    {% set total_revenue = daily_sales|sum(attribute='total') %}
+                    <div class="row text-center">
+                        <div class="col-12 mb-3">
+                            <h3 class="text-primary">{{ "%.2f"|format(total_revenue or 0) }} ₸</h3>
+                            <p class="text-muted">Жалпы кіріс / Общая выручка</p>
+                        </div>
+                        <div class="col-6">
+                            <h4>{{ daily_sales|length }}</h4>
+                            <p class="text-muted">Сауда күндері / Торговых дней</p>
+                        </div>
+                        <div class="col-6">
+                            <h4>{{ "%.2f"|format((total_revenue / daily_sales|length) if daily_sales|length > 0 else 0) }} ₸</h4>
+                            <p class="text-muted">Күндік орташа / Средний чек в день</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Sales Chart
+const ctx = document.getElementById('salesChart').getContext('2d');
+const salesData = {{ daily_sales|safe }};
+
+new Chart(ctx, {
+    type: 'line',
+    data: {
+        labels: [
+            {% for sale in daily_sales %}
+            '{{ sale.date.strftime("%d.%m") }}',
+            {% endfor %}
+        ],
+        datasets: [{
+            label: 'Сатулар (₸) / Продажи (₸)',
+            data: [
+                {% for sale in daily_sales %}
+                {{ sale.total or 0 }},
+                {% endfor %}
+            ],
+            borderColor: 'rgb(54, 162, 235)',
+            backgroundColor: 'rgba(54, 162, 235, 0.1)',
+            tension: 0.1
+        }]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {
+                        return value + ' ₸';
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
+{% endblock %}
