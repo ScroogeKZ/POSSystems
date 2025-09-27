@@ -16,15 +16,15 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Flask App"
+args = "POS System"
 
 [[workflows.workflow]]
-name = "Flask App"
+name = "POS System"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "uv run python app.py"
+args = "uv run python main.py"
 waitForPort = 5000
 
 [workflows.workflow.metadata]
@@ -33,10 +33,6 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 46127
-externalPort = 3000
 
 [deployment]
 deploymentTarget = "autoscale"

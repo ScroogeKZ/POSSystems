@@ -2,10 +2,10 @@ import os
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
 from config import Config
 from werkzeug.middleware.proxy_fix import ProxyFix
-from models import db, Product, Supplier, Category, Transaction, TransactionItem, Payment, PurchaseOrder, DiscountRule
+from models import db, Product, Supplier, Category, Transaction, TransactionItem, Payment, PurchaseOrder, DiscountRule, PromoCode
 from models import PaymentMethod, TransactionStatus, UnitType
 from datetime import datetime, timedelta
-from sqlalchemy import or_, desc, func
+from sqlalchemy import or_, desc, func, text, inspect
 from decimal import Decimal
 import secrets
 import string
@@ -26,8 +26,40 @@ def create_app():
     with app.app_context():
         db.create_all()
         initialize_sample_data()
+        
+        # Check schema compatibility for promo code features
+        check_promo_schema_compatibility(app)
     
     return app
+
+def check_promo_schema_compatibility(app):
+    """Check if database schema supports promo code features"""
+    try:
+        # Use proper schema inspection to check if promo_code_used column exists
+        inspector = inspect(db.engine)
+        transaction_columns = [col['name'] for col in inspector.get_columns('transactions')]
+        
+        if 'promo_code_used' in transaction_columns:
+            app.config['PROMO_FEATURES_ENABLED'] = True
+        else:
+            print("WARNING: Promo code features disabled - promo_code_used column not found in transactions table")
+            app.config['PROMO_FEATURES_ENABLED'] = False
+            
+    except Exception as e:
+        print(f"WARNING: Promo code features disabled due to schema check error: {e}")
+        app.config['PROMO_FEATURES_ENABLED'] = False
+        
+    try:
+        # Check if promo_codes table exists
+        inspector = inspect(db.engine)
+        if inspector.has_table('promo_codes'):
+            app.config['PROMO_CODES_TABLE_EXISTS'] = True
+        else:
+            print("WARNING: Promo codes table does not exist")
+            app.config['PROMO_CODES_TABLE_EXISTS'] = False
+    except Exception as e:
+        print(f"WARNING: Could not check promo_codes table: {e}")
+        app.config['PROMO_CODES_TABLE_EXISTS'] = False
 
 def generate_transaction_number():
     """Generate unique transaction number"""
@@ -91,6 +123,52 @@ def initialize_sample_data():
             db.session.add(product)
         
         db.session.commit()
+        
+        # Create sample promo codes for testing
+        if PromoCode.query.count() == 0:
+            promo1 = PromoCode(
+                code="SAVE10", 
+                name="10% скидка", 
+                description="Скидка 10% на любую покупку",
+                discount_type="percentage", 
+                discount_value=10.00, 
+                min_amount=500.00, 
+                max_uses=100, 
+                current_uses=0, 
+                is_active=True
+            )
+            
+            promo2 = PromoCode(
+                code="NEWCUSTOMER", 
+                name="Скидка новому клиенту", 
+                description="200₸ скидка для новых клиентов",
+                discount_type="fixed_amount", 
+                discount_value=200.00, 
+                min_amount=1000.00, 
+                max_uses=50, 
+                current_uses=0, 
+                is_active=True
+            )
+            
+            promo3 = PromoCode(
+                code="WEEKEND", 
+                name="Выходная скидка", 
+                description="15% скидка на выходные",
+                discount_type="percentage", 
+                discount_value=15.00, 
+                min_amount=300.00, 
+                max_uses=None,  # Unlimited
+                current_uses=0, 
+                is_active=True,
+                start_date=datetime.utcnow(),
+                end_date=datetime.utcnow() + timedelta(days=30)
+            )
+            
+            promos = [promo1, promo2, promo3]
+            for promo in promos:
+                db.session.add(promo)
+            
+            db.session.commit()
 
 # Create the Flask app
 app = create_app()
@@ -464,6 +542,22 @@ def complete_transaction():
         for item in transaction.items:
             item.product.stock_quantity -= int(item.quantity)
         
+        # Handle promo code usage increment atomically if promo code was used
+        if transaction.promo_code_used:
+            promo = db.session.query(PromoCode).filter(
+                func.upper(PromoCode.code) == transaction.promo_code_used.upper(),
+                PromoCode.is_active == True
+            ).with_for_update().first()
+            
+            if promo:
+                # Final validation before incrementing usage
+                if promo.max_uses and promo.current_uses >= promo.max_uses:
+                    # This should not happen if validation was done correctly earlier
+                    db.session.rollback()
+                    return jsonify({'success': False, 'error': 'Промокод исчерпан на момент завершения транзакции'}), 400
+                
+                promo.current_uses += 1
+        
         # Complete transaction
         transaction.status = TransactionStatus.COMPLETED
         transaction.completed_at = datetime.utcnow()
@@ -783,6 +877,183 @@ def get_discount_rules():
         'min_amount': float(rule.min_amount),
         'category_name': rule.category.name if rule.category else None
     } for rule in rules])
+
+@app.route('/api/promo_code/validate', methods=['POST'])
+def validate_promo_code():
+    """Validate promo code"""
+    try:
+        data = request.get_json() or {}
+        code = data.get('code', '').upper().strip()
+        
+        if not code:
+            return jsonify({'success': False, 'error': 'Промокод не указан'}), 400
+        
+        # Find promo code
+        promo = PromoCode.query.filter_by(code=code, is_active=True).first()
+        if not promo:
+            return jsonify({'success': False, 'error': 'Промокод не найден или не активен'}), 404
+        
+        now = datetime.utcnow()
+        
+        # Check date validity
+        if promo.start_date and promo.start_date > now:
+            return jsonify({'success': False, 'error': 'Промокод еще не активен'}), 400
+        
+        if promo.end_date and promo.end_date < now:
+            return jsonify({'success': False, 'error': 'Промокод истек'}), 400
+        
+        # Check usage limit
+        if promo.max_uses and promo.current_uses >= promo.max_uses:
+            return jsonify({'success': False, 'error': 'Промокод исчерпан'}), 400
+        
+        # Check minimum amount (if transaction exists)
+        transaction_id = session.get('current_transaction_id')
+        if transaction_id:
+            transaction = Transaction.query.get(transaction_id)
+            if transaction and transaction.subtotal < promo.min_amount:
+                return jsonify({
+                    'success': False, 
+                    'error': f'Минимальная сумма для применения промокода: {float(promo.min_amount)} ₸'
+                }), 400
+        
+        return jsonify({
+            'success': True,
+            'promo_code': {
+                'id': promo.id,
+                'code': promo.code,
+                'name': promo.name,
+                'description': promo.description,
+                'discount_type': promo.discount_type,
+                'discount_value': float(promo.discount_value),
+                'min_amount': float(promo.min_amount)
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/transaction/apply_promo', methods=['POST'])
+def apply_promo_to_transaction():
+    """Apply promo code to current transaction with proper atomicity"""
+    # Check if promo features are enabled
+    if not app.config.get('PROMO_FEATURES_ENABLED', False):
+        return jsonify({'success': False, 'error': 'Прomo code features not available - database schema incompatible'}), 503
+        
+    if not app.config.get('PROMO_CODES_TABLE_EXISTS', False):
+        return jsonify({'success': False, 'error': 'Promo codes table not available'}), 503
+        
+    try:
+        data = request.get_json() or {}
+        code = data.get('code', '').upper().strip()
+        transaction_id = session.get('current_transaction_id')
+        
+        if not transaction_id:
+            return jsonify({'success': False, 'error': 'Нет активной транзакции'}), 400
+        
+        if not code:
+            return jsonify({'success': False, 'error': 'Промокод не указан'}), 400
+            
+        # Use transaction for atomicity
+        with db.session.begin():
+            # Get and lock the transaction
+            transaction = db.session.query(Transaction).filter_by(id=transaction_id).with_for_update().first()
+            if not transaction or transaction.status != TransactionStatus.PENDING:
+                return jsonify({'success': False, 'error': 'Транзакция недоступна'}), 400
+            
+            # Check if promo already applied
+            if transaction.promo_code_used:
+                return jsonify({'success': False, 'error': 'Промокод уже применен к этой транзакции'}), 400
+            
+            # Get and lock the promo code
+            promo = db.session.query(PromoCode).filter(
+                func.upper(PromoCode.code) == code,
+                PromoCode.is_active == True
+            ).with_for_update().first()
+            
+            if not promo:
+                return jsonify({'success': False, 'error': 'Промокод не найден или не активен'}), 404
+            
+            now = datetime.utcnow()
+            
+            # Validate promo code constraints
+            if promo.start_date and promo.start_date > now:
+                return jsonify({'success': False, 'error': 'Промокод еще не активен'}), 400
+            
+            if promo.end_date and promo.end_date < now:
+                return jsonify({'success': False, 'error': 'Промокод истек'}), 400
+            
+            if promo.max_uses and promo.current_uses >= promo.max_uses:
+                return jsonify({'success': False, 'error': 'Промокод исчерпан'}), 400
+            
+            if transaction.subtotal < promo.min_amount:
+                return jsonify({
+                    'success': False, 
+                    'error': f'Минимальная сумма для применения промокода: {float(promo.min_amount)} ₸'
+                }), 400
+            
+            # Calculate discount
+            if promo.discount_type == 'percentage':
+                discount_amount = transaction.subtotal * (promo.discount_value / 100)
+            else:
+                discount_amount = promo.discount_value
+            
+            # Ensure discount doesn't exceed subtotal
+            discount_amount = min(discount_amount, transaction.subtotal)
+            
+            # Apply discount to transaction
+            transaction.discount_amount = discount_amount
+            transaction.promo_code_used = code
+            update_transaction_totals(transaction)
+            
+            # Note: Don't increment usage here - only on successful checkout
+            
+            return jsonify({
+                'success': True,
+                'promo_code': code,
+                'discount_amount': float(discount_amount),
+                'total_amount': float(transaction.total_amount),
+                'message': f'Промокод "{code}" применен! Скидка: {float(promo.discount_value)}{"%" if promo.discount_type == "percentage" else " ₸"}'
+            })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/transaction/remove_promo', methods=['POST'])
+def remove_promo_from_transaction():
+    """Remove promo code from current transaction"""
+    # Check if promo features are enabled
+    if not app.config.get('PROMO_FEATURES_ENABLED', False):
+        return jsonify({'success': False, 'error': 'Promo code features not available - database schema incompatible'}), 503
+        
+    try:
+        transaction_id = session.get('current_transaction_id')
+        
+        if not transaction_id:
+            return jsonify({'success': False, 'error': 'Нет активной транзакции'}), 400
+            
+        with db.session.begin():
+            transaction = db.session.query(Transaction).filter_by(id=transaction_id).with_for_update().first()
+            if not transaction or transaction.status != TransactionStatus.PENDING:
+                return jsonify({'success': False, 'error': 'Транзакция недоступна'}), 400
+            
+            if not transaction.promo_code_used:
+                return jsonify({'success': False, 'error': 'Промокод не применен'}), 400
+            
+            # Remove discount
+            transaction.discount_amount = Decimal('0.00')
+            transaction.promo_code_used = None
+            update_transaction_totals(transaction)
+            
+            return jsonify({
+                'success': True,
+                'total_amount': float(transaction.total_amount),
+                'message': 'Промокод удален'
+            })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # Analytics and Reports Routes
 @app.route('/api/analytics/top_products')

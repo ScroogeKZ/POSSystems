@@ -1,6 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from enum import Enum
+from sqlalchemy import func
 
 db = SQLAlchemy()
 
@@ -96,6 +97,7 @@ class Transaction(db.Model):
     total_amount = db.Column(db.Numeric(10, 2), default=0.00)
     cashier_name = db.Column(db.String(100))
     customer_name = db.Column(db.String(100))
+    promo_code_used = db.Column(db.String(20))  # Store applied promo code
     notes = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime)
@@ -172,3 +174,29 @@ class DiscountRule(db.Model):
     start_date = db.Column(db.DateTime)
     end_date = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class PromoCode(db.Model):
+    __tablename__ = 'promo_codes'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(20), nullable=False)  # Unique constraint handled separately
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text)
+    discount_type = db.Column(db.String(20), nullable=False)  # percentage, fixed_amount
+    discount_value = db.Column(db.Numeric(10, 2), nullable=False)
+    min_amount = db.Column(db.Numeric(10, 2), default=0.00)
+    max_uses = db.Column(db.Integer, default=None)  # None = unlimited
+    current_uses = db.Column(db.Integer, default=0)
+    is_active = db.Column(db.Boolean, default=True)
+    start_date = db.Column(db.DateTime)
+    end_date = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Add constraints and indexes for production
+    __table_args__ = (
+        db.Index('ix_promo_codes_upper_code', func.upper(code), unique=True),
+        db.Index('ix_promo_codes_active', 'is_active'),
+        db.CheckConstraint('discount_value >= 0', name='check_discount_value_positive'),
+        db.CheckConstraint('current_uses >= 0', name='check_current_uses_positive'),
+        db.CheckConstraint('max_uses IS NULL OR max_uses >= 0', name='check_max_uses_positive'),
+    )

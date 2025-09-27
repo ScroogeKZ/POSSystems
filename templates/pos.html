@@ -79,10 +79,78 @@
                             <span>НДС (12%):</span>
                             <span id="taxAmount">0.00 ₸</span>
                         </div>
+                        <div class="d-flex justify-content-between" id="discountRow" style="display: none;">
+                            <span>Скидка:</span>
+                            <span id="discountAmount" class="text-success">-0.00 ₸</span>
+                        </div>
                         <div class="total-amount">
                             <div class="d-flex justify-content-between">
                                 <span>ИТОГО:</span>
                                 <span id="totalAmount">0.00 ₸</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Discount Section -->
+                    <div id="discountSection" class="discount-section" style="display: none;">
+                        <div class="card border-0 bg-light">
+                            <div class="card-body p-3">
+                                <h6 class="card-title">
+                                    <i class="fas fa-percentage me-2"></i>Скидки и промокоды
+                                </h6>
+                                
+                                <!-- Promo Code Input -->
+                                <div class="mb-3">
+                                    <div class="input-group">
+                                        <input type="text" id="promoCodeInput" class="form-control" 
+                                               placeholder="Введите промокод" maxlength="20">
+                                        <button id="applyPromoCode" class="btn btn-outline-primary">
+                                            <i class="fas fa-check"></i>
+                                        </button>
+                                    </div>
+                                    <div id="promoCodeFeedback" class="mt-1" style="display: none;"></div>
+                                </div>
+                                
+                                <!-- Quick Discount Buttons -->
+                                <div class="row g-2">
+                                    <div class="col-4">
+                                        <button class="btn btn-outline-secondary btn-sm w-100" onclick="applyQuickDiscount(5, 'percentage')">
+                                            5%
+                                        </button>
+                                    </div>
+                                    <div class="col-4">
+                                        <button class="btn btn-outline-secondary btn-sm w-100" onclick="applyQuickDiscount(10, 'percentage')">
+                                            10%
+                                        </button>
+                                    </div>
+                                    <div class="col-4">
+                                        <button class="btn btn-outline-secondary btn-sm w-100" onclick="applyQuickDiscount(15, 'percentage')">
+                                            15%
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Manual Discount -->
+                                <div class="mt-3">
+                                    <div class="input-group">
+                                        <input type="number" id="customDiscountValue" class="form-control" 
+                                               placeholder="Сумма скидки" min="0" step="0.01">
+                                        <select id="customDiscountType" class="form-select" style="max-width: 100px;">
+                                            <option value="percentage">%</option>
+                                            <option value="fixed_amount">₸</option>
+                                        </select>
+                                        <button id="applyCustomDiscount" class="btn btn-outline-primary">
+                                            Применить
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Remove Discount -->
+                                <div class="mt-2" id="removeDiscountBtn" style="display: none;">
+                                    <button class="btn btn-outline-danger btn-sm w-100" onclick="removeDiscount()">
+                                        <i class="fas fa-times me-2"></i>Убрать скидку
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -95,12 +163,17 @@
                         
                         <div id="transactionActions" style="display: none;">
                             <div class="row g-2 mb-3">
-                                <div class="col-6">
+                                <div class="col-4">
                                     <button id="suspendTransaction" class="btn btn-secondary w-100">
                                         <i class="fas fa-pause me-2"></i>Отложить
                                     </button>
                                 </div>
-                                <div class="col-6">
+                                <div class="col-4">
+                                    <button id="discountBtn" class="btn btn-outline-success w-100">
+                                        <i class="fas fa-percentage me-2"></i>Скидка
+                                    </button>
+                                </div>
+                                <div class="col-4">
                                     <button id="clearCart" class="btn btn-outline-danger w-100">
                                         <i class="fas fa-trash me-2"></i>Очистить
                                     </button>
@@ -161,6 +234,18 @@ function initializeEventListeners() {
     // Payment buttons
     document.getElementById('cashPaymentBtn').addEventListener('click', () => processPayment('cash'));
     document.getElementById('cardPaymentBtn').addEventListener('click', () => processPayment('card'));
+    
+    // Discount functionality
+    document.getElementById('discountBtn').addEventListener('click', toggleDiscountSection);
+    document.getElementById('applyPromoCode').addEventListener('click', applyPromoCode);
+    document.getElementById('applyCustomDiscount').addEventListener('click', applyCustomDiscount);
+    
+    // Enter key for promo code
+    document.getElementById('promoCodeInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            applyPromoCode();
+        }
+    });
 }
 
 function debounce(func, wait) {
@@ -346,6 +431,20 @@ async function updateCartDisplay() {
             document.getElementById('subtotal').textContent = transaction.subtotal.toFixed(2) + ' ₸';
             document.getElementById('taxAmount').textContent = transaction.tax_amount.toFixed(2) + ' ₸';
             document.getElementById('totalAmount').textContent = transaction.total_amount.toFixed(2) + ' ₸';
+            
+            // Update discount display
+            const discountRow = document.getElementById('discountRow');
+            const discountAmount = document.getElementById('discountAmount');
+            const removeDiscountBtn = document.getElementById('removeDiscountBtn');
+            
+            if (transaction.discount_amount && transaction.discount_amount > 0) {
+                discountRow.style.display = 'flex';
+                discountAmount.textContent = '-' + transaction.discount_amount.toFixed(2) + ' ₸';
+                removeDiscountBtn.style.display = 'block';
+            } else {
+                discountRow.style.display = 'none';
+                removeDiscountBtn.style.display = 'none';
+            }
         }
     } catch (error) {
         console.error('Cart update error:', error);
@@ -511,6 +610,200 @@ async function removeFromCart(itemId) {
     } catch (error) {
         console.error('Remove item error:', error);
         alert('Ошибка связи с сервером');
+    }
+}
+
+// Discount functionality
+function toggleDiscountSection() {
+    const discountSection = document.getElementById('discountSection');
+    const discountBtn = document.getElementById('discountBtn');
+    
+    if (discountSection.style.display === 'none' || !discountSection.style.display) {
+        discountSection.style.display = 'block';
+        discountBtn.classList.add('active');
+    } else {
+        discountSection.style.display = 'none';
+        discountBtn.classList.remove('active');
+    }
+}
+
+async function applyQuickDiscount(value, type) {
+    if (!currentTransaction) {
+        alert('Сначала начните транзакцию');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/transaction/apply_discount', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                type: type,
+                value: value
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            updateCartDisplay();
+            showDiscountFeedback(result.message, 'success');
+            document.getElementById('removeDiscountBtn').style.display = 'block';
+        } else {
+            showDiscountFeedback(result.error, 'error');
+        }
+    } catch (error) {
+        console.error('Discount error:', error);
+        showDiscountFeedback('Ошибка связи с сервером', 'error');
+    }
+}
+
+async function applyPromoCode() {
+    const promoCodeInput = document.getElementById('promoCodeInput');
+    const code = promoCodeInput.value.trim().toUpperCase();
+    
+    if (!code) {
+        showPromoCodeFeedback('Введите промокод', 'error');
+        return;
+    }
+    
+    if (!currentTransaction) {
+        showPromoCodeFeedback('Сначала начните транзакцию', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/transaction/apply_promo', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                code: code
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            updateCartDisplay();
+            showPromoCodeFeedback(result.message, 'success');
+            promoCodeInput.value = '';
+            document.getElementById('removeDiscountBtn').style.display = 'block';
+        } else {
+            showPromoCodeFeedback(result.error, 'error');
+        }
+    } catch (error) {
+        console.error('Promo code error:', error);
+        showPromoCodeFeedback('Ошибка связи с сервером', 'error');
+    }
+}
+
+async function applyCustomDiscount() {
+    const valueInput = document.getElementById('customDiscountValue');
+    const typeSelect = document.getElementById('customDiscountType');
+    
+    const value = parseFloat(valueInput.value);
+    const type = typeSelect.value;
+    
+    if (isNaN(value) || value <= 0) {
+        showDiscountFeedback('Введите корректную сумму скидки', 'error');
+        return;
+    }
+    
+    if (!currentTransaction) {
+        showDiscountFeedback('Сначала начните транзакцию', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/transaction/apply_discount', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                type: type,
+                value: value
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            updateCartDisplay();
+            showDiscountFeedback(result.message, 'success');
+            valueInput.value = '';
+            document.getElementById('removeDiscountBtn').style.display = 'block';
+        } else {
+            showDiscountFeedback(result.error, 'error');
+        }
+    } catch (error) {
+        console.error('Custom discount error:', error);
+        showDiscountFeedback('Ошибка связи с сервером', 'error');
+    }
+}
+
+async function removeDiscount() {
+    if (!currentTransaction) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/transaction/remove_promo', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            updateCartDisplay();
+            showDiscountFeedback('Скидка удалена', 'success');
+            document.getElementById('removeDiscountBtn').style.display = 'none';
+        } else {
+            showDiscountFeedback(result.error, 'error');
+        }
+    } catch (error) {
+        console.error('Remove discount error:', error);
+        showDiscountFeedback('Ошибка связи с сервером', 'error');
+    }
+}
+
+function showDiscountFeedback(message, type) {
+    // Create a simple alert for now
+    if (type === 'success') {
+        // Show success message briefly
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed';
+        alertDiv.style.top = '20px';
+        alertDiv.style.right = '20px';
+        alertDiv.style.zIndex = '9999';
+        alertDiv.innerHTML = `${message} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+        document.body.appendChild(alertDiv);
+        
+        setTimeout(() => {
+            alertDiv.remove();
+        }, 3000);
+    } else {
+        alert(message);
+    }
+}
+
+function showPromoCodeFeedback(message, type) {
+    const feedbackDiv = document.getElementById('promoCodeFeedback');
+    feedbackDiv.textContent = message;
+    feedbackDiv.className = type === 'success' ? 'text-success small' : 'text-danger small';
+    feedbackDiv.style.display = 'block';
+    
+    if (type === 'success') {
+        setTimeout(() => {
+            feedbackDiv.style.display = 'none';
+        }, 3000);
     }
 }
 
