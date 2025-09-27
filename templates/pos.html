@@ -27,6 +27,100 @@
                             </select>
                         </div>
                     </div>
+                    
+                    <!-- Quick Access and Scanner Controls -->
+                    <div class="row mt-3">
+                        <div class="col-6">
+                            <div class="quick-access-controls">
+                                <button id="toggleQuickAccess" class="btn btn-outline-success w-100">
+                                    <i class="fas fa-star me-2"></i>
+                                    <span>{{ get_text('Танымал тауарлар', 'Популярные товары') }}</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="barcode-scanner-controls">
+                                <button id="toggleBarcodeScanner" class="btn btn-outline-primary w-100">
+                                    <i class="fas fa-qrcode me-2"></i>
+                                    <span id="scannerButtonText">{{ get_text('Сканер қосу', 'Включить сканер') }}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Barcode Scanner Modal -->
+                <div class="modal fade" id="barcodeScannerModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-lg modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">
+                                    <i class="fas fa-qrcode me-2"></i>
+                                    {{ get_text('Штрих-код сканері', 'Сканер штрих-кодов') }}
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div id="barcodeScanner" class="barcode-scanner-container">
+                                    <div class="scanner-viewport">
+                                        <video id="barcodeScannerVideo" autoplay muted playsinline></video>
+                                        <div class="scanner-overlay">
+                                            <div class="scanner-line"></div>
+                                        </div>
+                                    </div>
+                                    <div class="scanner-info mt-3">
+                                        <p class="text-center text-muted">
+                                            {{ get_text('Штрих-кодты камера көрінісіне орналастырыңыз', 'Наведите штрих-код на камеру') }}
+                                        </p>
+                                        <div id="scannerStatus" class="text-center">
+                                            <span class="badge bg-info">{{ get_text('Дайын', 'Готов к сканированию') }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="manualBarcodeInput" class="mt-3" style="display: none;">
+                                    <div class="input-group">
+                                        <input type="text" id="manualBarcode" class="form-control" 
+                                               placeholder="{{ get_text('Штрих-кодты қолмен енгізіңіз', 'Введите штрих-код вручную') }}">
+                                        <button type="button" id="submitManualBarcode" class="btn btn-primary">
+                                            {{ get_text('Іздеу', 'Найти') }}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" id="toggleManualInput" class="btn btn-outline-secondary">
+                                    {{ get_text('Қолмен енгізу', 'Ручной ввод') }}
+                                </button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                                    {{ get_text('Жабу', 'Закрыть') }}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Quick Access Panel -->
+                <div id="quickAccessPanel" class="quick-access-panel mt-3" style="display: none;">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">
+                                <i class="fas fa-star text-warning me-2"></i>
+                                {{ get_text('Танымал тауарлар', 'Популярные товары') }}
+                            </h6>
+                            <small class="text-muted">{{ get_text('Жылдам қосу', 'Быстрое добавление') }}</small>
+                        </div>
+                        <div class="card-body p-2">
+                            <div id="quickAccessProducts" class="row g-2">
+                                <!-- Quick access products will be loaded here -->
+                                <div class="col-12 text-center py-3">
+                                    <div class="spinner-border spinner-border-sm me-2" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    {{ get_text('Танымал тауарлар жүктелуде...', 'Загрузка популярных товаров...') }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 
                 <div id="searchResults" class="search-results mt-3"></div>
@@ -217,14 +311,235 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- QuaggaJS - Barcode Scanner Library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+
 <script>
-// POS JavaScript functionality will be added here
+// POS JavaScript functionality
 let currentTransaction = null;
 let cart = [];
+let barcodeScanner = null;
+let isScanning = false;
 
-// Initialize POS interface
+// Barcode Scanner functionality
+class BarcodeScanner {
+    constructor() {
+        this.modal = document.getElementById('barcodeScannerModal');
+        this.video = document.getElementById('barcodeScannerVideo');
+        this.toggleBtn = document.getElementById('toggleBarcodeScanner');
+        this.statusElement = document.getElementById('scannerStatus');
+        this.manualInput = document.getElementById('manualBarcodeInput');
+        this.manualBarcodeInput = document.getElementById('manualBarcode');
+        
+        this.setupEventListeners();
+        this.stream = null;
+    }
+    
+    setupEventListeners() {
+        // Toggle scanner button
+        this.toggleBtn.addEventListener('click', () => {
+            this.openScanner();
+        });
+        
+        // Manual input toggle
+        document.getElementById('toggleManualInput').addEventListener('click', () => {
+            this.toggleManualInput();
+        });
+        
+        // Manual barcode submission
+        document.getElementById('submitManualBarcode').addEventListener('click', () => {
+            this.processManualBarcode();
+        });
+        
+        this.manualBarcodeInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.processManualBarcode();
+            }
+        });
+        
+        // Modal close event
+        this.modal.addEventListener('hidden.bs.modal', () => {
+            this.stopScanner();
+        });
+    }
+    
+    async openScanner() {
+        try {
+            const modal = new bootstrap.Modal(this.modal);
+            modal.show();
+            
+            // Start camera after modal is shown
+            this.modal.addEventListener('shown.bs.modal', () => {
+                this.startCamera();
+            }, { once: true });
+            
+        } catch (error) {
+            console.error('Error opening scanner:', error);
+            this.updateStatus('Ошибка доступа к камере', 'danger');
+        }
+    }
+    
+    async startCamera() {
+        try {
+            this.updateStatus('Инициализация камеры...', 'warning');
+            
+            // Get camera stream
+            this.stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: 'environment', // Use back camera on mobile
+                    width: { ideal: 640 },
+                    height: { ideal: 480 }
+                }
+            });
+            
+            this.video.srcObject = this.stream;
+            
+            // Initialize Quagga scanner
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: this.video
+                },
+                locator: {
+                    patchSize: "medium",
+                    halfSample: true
+                },
+                numOfWorkers: 2,
+                decoder: {
+                    readers: [
+                        "code_128_reader",
+                        "ean_reader",
+                        "ean_8_reader",
+                        "code_39_reader",
+                        "code_39_vin_reader",
+                        "codabar_reader",
+                        "upc_reader",
+                        "upc_e_reader",
+                        "i2of5_reader"
+                    ]
+                },
+                locate: true
+            }, (err) => {
+                if (err) {
+                    console.error('QuaggaJS initialization error:', err);
+                    this.updateStatus('Ошибка инициализации сканера', 'danger');
+                    return;
+                }
+                
+                this.updateStatus('Готов к сканированию', 'success');
+                Quagga.start();
+                isScanning = true;
+                
+                // Listen for barcode detection
+                Quagga.onDetected(this.onBarcodeDetected.bind(this));
+            });
+            
+        } catch (error) {
+            console.error('Camera access error:', error);
+            this.updateStatus('Нет доступа к камере', 'danger');
+        }
+    }
+    
+    onBarcodeDetected(data) {
+        const code = data.codeResult.code;
+        
+        // Add visual feedback
+        const scanner = document.querySelector('.scanner-viewport');
+        scanner.classList.add('scanner-success');
+        setTimeout(() => scanner.classList.remove('scanner-success'), 300);
+        
+        this.updateStatus(`Найден: ${code}`, 'success');
+        
+        // Process the barcode
+        this.searchProductByBarcode(code);
+        
+        // Close scanner after successful scan
+        setTimeout(() => {
+            const modal = bootstrap.Modal.getInstance(this.modal);
+            modal.hide();
+        }, 1000);
+    }
+    
+    stopScanner() {
+        if (isScanning) {
+            Quagga.stop();
+            isScanning = false;
+        }
+        
+        if (this.stream) {
+            this.stream.getTracks().forEach(track => track.stop());
+            this.stream = null;
+        }
+        
+        this.video.srcObject = null;
+        this.updateStatus('Готов к сканированию', 'info');
+    }
+    
+    toggleManualInput() {
+        const isVisible = this.manualInput.style.display !== 'none';
+        this.manualInput.style.display = isVisible ? 'none' : 'block';
+        
+        if (!isVisible) {
+            this.manualBarcodeInput.focus();
+        }
+    }
+    
+    processManualBarcode() {
+        const barcode = this.manualBarcodeInput.value.trim();
+        if (barcode) {
+            this.searchProductByBarcode(barcode);
+            this.manualBarcodeInput.value = '';
+            
+            const modal = bootstrap.Modal.getInstance(this.modal);
+            modal.hide();
+        }
+    }
+    
+    async searchProductByBarcode(barcode) {
+        try {
+            this.updateStatus('Поиск товара...', 'warning');
+            
+            const response = await fetch(`/api/search-barcode?code=${encodeURIComponent(barcode)}`);
+            const data = await response.json();
+            
+            if (data.success && data.product) {
+                // Add product to search results
+                displaySearchResults([data.product]);
+                this.updateStatus(`Товар найден: ${data.product.name}`, 'success');
+                
+                // Auto-add to cart if transaction is active
+                if (currentTransaction) {
+                    addToCart(data.product);
+                }
+            } else {
+                this.updateStatus('Товар не найден', 'warning');
+                alert(`Товар с штрих-кодом ${barcode} не найден в базе данных.`);
+            }
+            
+        } catch (error) {
+            console.error('Barcode search error:', error);
+            this.updateStatus('Ошибка поиска', 'danger');
+            alert('Ошибка при поиске товара по штрих-коду.');
+        }
+    }
+    
+    updateStatus(message, type) {
+        const statusClass = {
+            'info': 'bg-info',
+            'success': 'bg-success', 
+            'warning': 'bg-warning text-dark',
+            'danger': 'bg-danger'
+        };
+        
+        this.statusElement.innerHTML = `<span class="badge ${statusClass[type] || 'bg-info'}">${message}</span>`;
+    }
+}
+
+// Initialize POS interface and barcode scanner when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
     initializeEventListeners();
+    barcodeScanner = new BarcodeScanner();
 });
 
 function initializeEventListeners() {
@@ -904,8 +1219,185 @@ async function restoreTransaction(transactionId) {
     }
 }
 
-// Add event listener for suspended transactions button
-document.getElementById('showSuspendedBtn').addEventListener('click', showSuspendedTransactions);
+// Quick Access Panel functionality
+let quickAccessVisible = false;
+
+async function toggleQuickAccess() {
+    const panel = document.getElementById('quickAccessPanel');
+    const button = document.getElementById('toggleQuickAccess');
+    
+    if (!quickAccessVisible) {
+        // Show panel and load products
+        panel.style.display = 'block';
+        button.classList.remove('btn-outline-success');
+        button.classList.add('btn-success');
+        quickAccessVisible = true;
+        
+        await loadQuickAccessProducts();
+    } else {
+        // Hide panel
+        panel.style.display = 'none';
+        button.classList.remove('btn-success');
+        button.classList.add('btn-outline-success');
+        quickAccessVisible = false;
+    }
+}
+
+async function loadQuickAccessProducts() {
+    const container = document.getElementById('quickAccessProducts');
+    
+    try {
+        // Show loading spinner
+        container.innerHTML = `
+            <div class="col-12 text-center py-3">
+                <div class="spinner-border spinner-border-sm me-2" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                Загрузка популярных товаров...
+            </div>`;
+        
+        const response = await fetch('/api/quick-access-products');
+        const data = await response.json();
+        
+        if (data.success && data.products.length > 0) {
+            displayQuickAccessProducts(data.products);
+        } else {
+            container.innerHTML = `
+                <div class="col-12 text-center py-3">
+                    <p class="text-muted mb-0">
+                        <i class="fas fa-info-circle me-2"></i>
+                        Нет данных о популярных товарах
+                    </p>
+                    <small class="text-muted">Данные появятся после совершения продаж</small>
+                </div>`;
+        }
+    } catch (error) {
+        console.error('Error loading quick access products:', error);
+        container.innerHTML = `
+            <div class="col-12 text-center py-3">
+                <p class="text-danger mb-0">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Ошибка загрузки популярных товаров
+                </p>
+            </div>`;
+    }
+}
+
+function displayQuickAccessProducts(products) {
+    const container = document.getElementById('quickAccessProducts');
+    
+    // Clear container first
+    container.innerHTML = '';
+    
+    products.forEach(product => {
+        const productDiv = document.createElement('div');
+        productDiv.className = 'col-lg-3 col-md-4 col-6';
+        
+        const quickAccessDiv = document.createElement('div');
+        quickAccessDiv.className = 'quick-access-product';
+        quickAccessDiv.setAttribute('data-product-id', product.id);
+        quickAccessDiv.setAttribute('data-product-name', product.name);
+        quickAccessDiv.setAttribute('data-product-price', product.price);
+        
+        const cardDiv = document.createElement('div');
+        cardDiv.className = 'card h-100 shadow-sm border-0 quick-product-card';
+        
+        const cardBody = document.createElement('div');
+        cardBody.className = 'card-body p-2 text-center';
+        
+        // Image or icon
+        const imageDiv = document.createElement('div');
+        imageDiv.className = 'mb-2';
+        
+        if (product.image_filename) {
+            const img = document.createElement('img');
+            img.src = `/static/images/products/thumbnails/${product.image_filename}`;
+            img.alt = product.name;
+            img.className = 'img-fluid rounded';
+            img.style.cssText = 'width: 40px; height: 40px; object-fit: cover;';
+            imageDiv.appendChild(img);
+        } else {
+            const icon = document.createElement('i');
+            icon.className = 'fas fa-box text-muted';
+            icon.style.fontSize = '1.5rem';
+            imageDiv.appendChild(icon);
+        }
+        
+        // Product name
+        const nameHeader = document.createElement('h6');
+        nameHeader.className = 'card-title mb-1';
+        nameHeader.style.cssText = 'font-size: 0.8rem; line-height: 1.2;';
+        nameHeader.textContent = product.name.length > 25 ? product.name.substring(0, 25) + '...' : product.name;
+        
+        // Price
+        const priceP = document.createElement('p');
+        priceP.className = 'card-text mb-1';
+        const priceStrong = document.createElement('strong');
+        priceStrong.style.fontSize = '0.9rem';
+        priceStrong.textContent = `${product.price.toFixed(2)} ₸`;
+        priceP.appendChild(priceStrong);
+        
+        // Stock
+        const stockSmall = document.createElement('small');
+        stockSmall.className = 'text-muted';
+        stockSmall.style.fontSize = '0.7rem';
+        stockSmall.textContent = `В наличии: ${product.stock_quantity}`;
+        
+        // Add elements to card body
+        cardBody.appendChild(imageDiv);
+        cardBody.appendChild(nameHeader);
+        cardBody.appendChild(priceP);
+        cardBody.appendChild(stockSmall);
+        
+        // Recent sales badge
+        if (product.recent_sales > 0) {
+            const badgeDiv = document.createElement('div');
+            badgeDiv.className = 'mt-1';
+            
+            const badge = document.createElement('span');
+            badge.className = 'badge bg-warning text-dark';
+            badge.style.fontSize = '0.6rem';
+            
+            const fireIcon = document.createElement('i');
+            fireIcon.className = 'fas fa-fire me-1';
+            badge.appendChild(fireIcon);
+            badge.appendChild(document.createTextNode(`${product.recent_sales} за неделю`));
+            
+            badgeDiv.appendChild(badge);
+            cardBody.appendChild(badgeDiv);
+        }
+        
+        // Add click handler for adding to cart
+        quickAccessDiv.addEventListener('click', function() {
+            if (currentTransaction) {
+                addToCart(product);
+            } else {
+                showNotification('Начните новую транзакцию для добавления товаров', 'warning');
+            }
+        });
+        
+        // Assemble the card
+        cardDiv.appendChild(cardBody);
+        quickAccessDiv.appendChild(cardDiv);
+        productDiv.appendChild(quickAccessDiv);
+        container.appendChild(productDiv);
+    });
+}
+
+// Initialize event listeners when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    // Add event listeners for quick access and suspended transactions  
+    const quickAccessBtn = document.getElementById('toggleQuickAccess');
+    const suspendedBtn = document.getElementById('showSuspendedBtn');
+    
+    if (quickAccessBtn) {
+        quickAccessBtn.addEventListener('click', toggleQuickAccess);
+    }
+    
+    if (suspendedBtn) {
+        suspendedBtn.addEventListener('click', showSuspendedTransactions);
+    }
+});
 
 </script>
 

@@ -499,6 +499,213 @@ def search_products():
         'image_filename': p.image_filename
     } for p in products])
 
+@app.route('/api/search-barcode')
+@login_required
+def search_barcode():
+    """API endpoint for barcode product search"""
+    barcode = request.args.get('code', '').strip()
+    
+    if not barcode:
+        return jsonify({
+            'success': False,
+            'error': 'Barcode is required'
+        })
+    
+    # Search by barcode first, then by SKU as fallback
+    product = Product.query.filter_by(barcode=barcode, is_active=True).first()
+    
+    if not product:
+        # Fallback: try to find by SKU (in case barcode is same as SKU)
+        product = Product.query.filter_by(sku=barcode, is_active=True).first()
+    
+    if product:
+        return jsonify({
+            'success': True,
+            'product': {
+                'id': product.id,
+                'sku': product.sku,
+                'barcode': product.barcode,
+                'name': translate_name(product.name, 'products'),
+                'price': float(product.price),
+                'stock_quantity': product.stock_quantity,
+                'unit_type': translate_name(product.unit_type.value, 'units'),
+                'image_filename': product.image_filename,
+                'category_name': translate_name(product.category.name, 'categories') if product.category else None,
+                'supplier_name': product.supplier.name if product.supplier else None
+            }
+        })
+    else:
+        return jsonify({
+            'success': False,
+            'error': f'Product with barcode {barcode} not found'
+        })
+
+@app.route('/api/popular-products')
+@login_required
+def get_popular_products():
+    """API endpoint for getting popular/frequently bought products"""
+    try:
+        limit = min(int(request.args.get('limit', 10)), 20)  # Max 20 products
+        days = min(int(request.args.get('days', 30)), 90)  # Max 90 days
+        
+        # Calculate product popularity based on transaction frequency and quantity
+        # within the specified time period
+        from datetime import datetime, timedelta
+        
+        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        
+        # Get popular products with sales statistics
+        popular_products_query = db.session.query(
+            Product.id,
+            Product.name,
+            Product.sku,
+            Product.price,
+            Product.stock_quantity,
+            Product.unit_type,
+            Product.image_filename,
+            func.count(TransactionItem.id).label('transaction_count'),
+            func.sum(TransactionItem.quantity).label('total_sold'),
+            func.avg(TransactionItem.quantity).label('avg_quantity_per_sale')
+        ).join(
+            TransactionItem, Product.id == TransactionItem.product_id
+        ).join(
+            Transaction, TransactionItem.transaction_id == Transaction.id
+        ).filter(
+            Product.is_active == True,
+            Transaction.status == TransactionStatus.COMPLETED,
+            Transaction.completed_at >= cutoff_date
+        ).group_by(
+            Product.id, Product.name, Product.sku, Product.price, 
+            Product.stock_quantity, Product.unit_type, Product.image_filename
+        ).order_by(
+            func.count(TransactionItem.id).desc(),  # Primary: transaction frequency
+            func.sum(TransactionItem.quantity).desc()  # Secondary: total quantity sold
+        ).limit(limit)
+        
+        popular_products = popular_products_query.all()
+        
+        # Format response
+        products_data = []
+        for product in popular_products:
+            products_data.append({
+                'id': product.id,
+                'name': translate_name(product.name, 'products'),
+                'sku': product.sku,
+                'price': float(product.price),
+                'stock_quantity': product.stock_quantity,
+                'unit_type': translate_name(product.unit_type.value, 'units'),
+                'image_filename': product.image_filename,
+                'popularity_stats': {
+                    'transaction_count': product.transaction_count,
+                    'total_sold': float(product.total_sold) if product.total_sold else 0,
+                    'avg_quantity_per_sale': round(float(product.avg_quantity_per_sale), 2) if product.avg_quantity_per_sale else 0
+                }
+            })
+        
+        return jsonify({
+            'success': True,
+            'products': products_data,
+            'period_days': days,
+            'total_count': len(products_data)
+        })
+        
+    except Exception as e:
+        print(f"Error getting popular products: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to retrieve popular products'
+        })
+
+@app.route('/api/quick-access-products')
+@login_required 
+def get_quick_access_products():
+    """API endpoint for getting products for quick access based on multiple factors"""
+    try:
+        # Get products based on:
+        # 1. Recent popularity (last 7 days)
+        # 2. Overall popularity (last 30 days) 
+        # 3. Current stock availability
+        
+        from datetime import datetime, timedelta
+        
+        recent_cutoff = datetime.utcnow() - timedelta(days=7)
+        overall_cutoff = datetime.utcnow() - timedelta(days=30)
+        
+        # Recent popular products (last 7 days)
+        recent_popular = db.session.query(
+            Product.id,
+            func.count(TransactionItem.id).label('recent_sales')
+        ).join(
+            TransactionItem, Product.id == TransactionItem.product_id
+        ).join(
+            Transaction, TransactionItem.transaction_id == Transaction.id
+        ).filter(
+            Product.is_active == True,
+            Product.stock_quantity > 0,  # Only in-stock items
+            Transaction.status == TransactionStatus.COMPLETED,
+            Transaction.completed_at >= recent_cutoff
+        ).group_by(Product.id).subquery()
+        
+        # Get products with both recent and overall popularity
+        quick_access_products = db.session.query(
+            Product.id,
+            Product.name,
+            Product.sku,
+            Product.price,
+            Product.stock_quantity,
+            Product.unit_type,
+            Product.image_filename,
+            recent_popular.c.recent_sales,
+            func.count(TransactionItem.id).label('overall_sales')
+        ).outerjoin(
+            recent_popular, Product.id == recent_popular.c.id
+        ).join(
+            TransactionItem, Product.id == TransactionItem.product_id
+        ).join(
+            Transaction, TransactionItem.transaction_id == Transaction.id
+        ).filter(
+            Product.is_active == True,
+            Product.stock_quantity > 0,  # Only available items
+            Transaction.status == TransactionStatus.COMPLETED,
+            Transaction.completed_at >= overall_cutoff
+        ).group_by(
+            Product.id, Product.name, Product.sku, Product.price,
+            Product.stock_quantity, Product.unit_type, Product.image_filename,
+            recent_popular.c.recent_sales
+        ).order_by(
+            # Prioritize items with recent sales, then overall sales
+            func.coalesce(recent_popular.c.recent_sales, 0).desc(),
+            func.count(TransactionItem.id).desc()
+        ).limit(8).all()  # Limit to 8 for quick access panel
+        
+        # Format response
+        products_data = []
+        for product in quick_access_products:
+            products_data.append({
+                'id': product.id,
+                'name': translate_name(product.name, 'products'),
+                'sku': product.sku,
+                'price': float(product.price),
+                'stock_quantity': product.stock_quantity,
+                'unit_type': translate_name(product.unit_type.value, 'units'),
+                'image_filename': product.image_filename,
+                'recent_sales': product.recent_sales or 0,
+                'overall_sales': product.overall_sales
+            })
+        
+        return jsonify({
+            'success': True,
+            'products': products_data,
+            'total_count': len(products_data)
+        })
+        
+    except Exception as e:
+        print(f"Error getting quick access products: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to retrieve quick access products'
+        })
+
 @app.route('/inventory')
 @login_required
 def inventory():

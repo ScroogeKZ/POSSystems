@@ -115,6 +115,7 @@ class Product(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     sku = db.Column(db.String(50), unique=True, nullable=False)
+    barcode = db.Column(db.String(50), unique=True, nullable=True)  # Barcode/QR code for scanning
     name = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
     unit_type = db.Column(db.Enum(UnitType), default=UnitType.PIECE)

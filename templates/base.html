@@ -273,6 +273,350 @@
                 font-size: 0.9rem;
             }
             
+            /* POS Interface - Mobile stacked layout */
+            .modern-pos-interface .row {
+                flex-direction: column;
+            }
+            
+            .search-panel, .transaction-panel {
+                padding: 15px;
+                min-height: auto;
+                max-height: none;
+            }
+            
+            .search-panel {
+                order: 2;
+                max-height: 50vh;
+                overflow-y: auto;
+            }
+            
+            .transaction-panel {
+                order: 1;
+                border-bottom: 2px solid #e0e0e0;
+                margin-bottom: 10px;
+            }
+            
+            .transaction-items {
+                max-height: 200px;
+                min-height: 150px;
+            }
+            
+            /* Touch-friendly button sizes */
+            .btn-payment {
+                min-height: 80px;
+                font-size: 14px;
+                padding: 15px 10px;
+            }
+            
+            .btn-payment i {
+                font-size: 20px;
+            }
+            
+            .form-control-lg {
+                font-size: 16px; /* Prevents zoom on iOS */
+                padding: 15px;
+            }
+            
+            .form-select-lg {
+                font-size: 16px;
+                padding: 15px;
+            }
+            
+            /* Improved product card for touch */
+            .product-card {
+                margin-bottom: 12px;
+                min-height: 80px;
+            }
+            
+            .product-card .card-body {
+                padding: 12px;
+            }
+        }
+
+        /* Tablet specific optimizations (768px - 1024px) */
+        @media (min-width: 768px) and (max-width: 1024px) {
+            /* Tablet Portrait Mode */
+            .search-panel, .transaction-panel {
+                padding: 20px;
+            }
+            
+            /* Better touch targets for tablets */
+            .btn-payment {
+                min-height: 120px;
+                font-size: 18px;
+                padding: 20px 15px;
+            }
+            
+            .btn-payment i {
+                font-size: 28px;
+            }
+            
+            .form-control-lg, .form-select-lg {
+                font-size: 18px;
+                padding: 18px;
+            }
+            
+            /* Product cards optimized for tablet touch */
+            .product-card {
+                min-height: 100px;
+                margin-bottom: 15px;
+            }
+            
+            .product-card .card-body {
+                padding: 15px;
+            }
+            
+            /* Action buttons larger for tablets */
+            .btn {
+                padding: 12px 20px;
+                font-size: 16px;
+            }
+            
+            .btn-start {
+                font-size: 20px;
+                padding: 18px 30px;
+            }
+            
+            /* Transaction items better spaced */
+            .transaction-items {
+                max-height: calc(100vh - 450px);
+                min-height: 350px;
+            }
+            
+            .cart-item {
+                padding: 15px;
+            }
+            
+            /* Better totals display */
+            .totals-display > div {
+                padding: 10px 0;
+                font-size: 18px;
+            }
+            
+            .total-amount .d-flex {
+                font-size: 26px;
+            }
+        }
+
+        /* Landscape tablet optimizations */
+        @media (min-width: 768px) and (max-width: 1024px) and (orientation: landscape) {
+            .modern-pos-interface .row {
+                min-height: calc(100vh - 120px);
+            }
+            
+            .search-panel, .transaction-panel {
+                min-height: calc(100vh - 140px);
+            }
+            
+            .transaction-items {
+                max-height: calc(100vh - 400px);
+            }
+            
+            /* Compact header for landscape */
+            .search-header h4, .transaction-header h4 {
+                font-size: 1.3rem;
+                margin-bottom: 15px;
+            }
+        }
+
+        /* Large tablets and small desktops */
+        @media (min-width: 1024px) and (max-width: 1366px) {
+            .btn-payment {
+                min-height: 110px;
+                font-size: 17px;
+            }
+            
+            .btn-payment i {
+                font-size: 26px;
+            }
+        }
+
+        /* Barcode Scanner Styles */
+        .barcode-scanner-container {
+            position: relative;
+            text-align: center;
+        }
+        
+        .scanner-viewport {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        #barcodeScannerVideo {
+            width: 100%;
+            height: auto;
+            max-height: 400px;
+            object-fit: cover;
+        }
+        
+        .scanner-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+        
+        .scanner-line {
+            width: 80%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #ff4444, transparent);
+            animation: scannerMove 2s ease-in-out infinite;
+        }
+        
+        @keyframes scannerMove {
+            0%, 100% { transform: translateY(-50px); opacity: 0; }
+            50% { transform: translateY(0); opacity: 1; }
+        }
+        
+        .scanner-info {
+            padding: 15px;
+        }
+        
+        .barcode-scanner-controls .btn {
+            min-height: 60px;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        .barcode-scanner-controls .btn i {
+            font-size: 20px;
+        }
+        
+        /* Mobile optimizations for scanner */
+        @media (max-width: 768px) {
+            .scanner-viewport {
+                max-width: 100%;
+            }
+            
+            #barcodeScannerVideo {
+                max-height: 300px;
+            }
+            
+            .barcode-scanner-controls .btn {
+                min-height: 50px;
+                font-size: 14px;
+            }
+            
+            .barcode-scanner-controls .btn i {
+                font-size: 18px;
+            }
+        }
+        
+        /* Scanner result animation */
+        .scanner-success {
+            animation: scannerSuccess 0.3s ease-in-out;
+        }
+        
+        @keyframes scannerSuccess {
+            0% { background: transparent; }
+            50% { background: rgba(40, 167, 69, 0.2); }
+            100% { background: transparent; }
+        }
+        
+        /* Quick Access Panel Styles */
+        .quick-access-panel .card {
+            border: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .quick-access-panel .card-header {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            border-bottom: none;
+        }
+        
+        .quick-product-card {
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 2px solid transparent !important;
+        }
+        
+        .quick-product-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15) !important;
+            border-color: #28a745 !important;
+        }
+        
+        .quick-access-product {
+            transition: all 0.2s ease;
+        }
+        
+        .quick-access-product:active {
+            transform: scale(0.98);
+        }
+        
+        /* Responsive adjustments for quick access */
+        @media (max-width: 1024px) {
+            .quick-access-products .col-lg-3 {
+                flex: 0 0 50%;
+                max-width: 50%;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .quick-access-products .col-6 {
+                flex: 0 0 50%;
+                max-width: 50%;
+            }
+            
+            .quick-product-card .card-body {
+                padding: 0.5rem !important;
+            }
+            
+            .quick-product-card h6 {
+                font-size: 0.7rem !important;
+            }
+            
+            .quick-product-card .card-text strong {
+                font-size: 0.8rem !important;
+            }
+        }
+        
+        @media (max-width: 576px) {
+            .quick-access-controls,
+            .barcode-scanner-controls {
+                margin-bottom: 10px;
+            }
+            
+            .quick-access-controls .btn,
+            .barcode-scanner-controls .btn {
+                padding: 8px 12px;
+                font-size: 0.85rem;
+            }
+            
+            .quick-access-panel .card-header h6 {
+                font-size: 0.9rem;
+            }
+        }
+
+        /* Touch interaction improvements */
+        @media (hover: none) and (pointer: coarse) {
+            /* Optimizations for touch devices */
+            .btn:hover {
+                transform: none;
+            }
+            
+            .product-card:hover {
+                transform: none;
+            }
+            
+            .btn-payment:hover {
+                transform: scale(0.98);
+            }
+        }
+
+        /* Additional mobile CSS that was previously outside media queries */
+        @media (max-width: 767px) {
             .dropdown-menu {
                 font-size: 0.85rem;
             }

@@ -16,19 +16,19 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "POS Frontend Server"
+args = "POS Frontend"
 
 [[workflows.workflow]]
-name = "POS Frontend Server"
+name = "POS Frontend"
 author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "ADMIN_PASSWORD='SecureAdmin2024!' uv run python main.py"
 waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [[ports]]
 localPort = 5000
