@@ -13,13 +13,17 @@ from decimal import Decimal
 import secrets
 import string
 import io
+import uuid
 import pandas as pd
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib import colors
 from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from flask import send_file
+from flask import send_file, send_from_directory
+from werkzeug.utils import secure_filename
+from PIL import Image, ImageOps
+import imghdr
 
 def create_default_admin_user():
     """Create default admin user if none exists - requires ADMIN_PASSWORD env var"""
@@ -330,6 +334,98 @@ def set_language(language):
 @app.context_processor
 def inject_language_functions():
     return dict(get_language=get_language, get_text=get_text, translate_name=translate_name, UserRole=UserRole)
+
+# Image processing functions
+def allowed_file(filename):
+    """Check if uploaded file has allowed extension"""
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+
+def validate_image(file):
+    """Validate uploaded image file"""
+    if not file or file.filename == '':
+        return False, 'Файл не выбран'
+    
+    if not allowed_file(file.filename):
+        return False, 'Недопустимый тип файла. Разрешены: PNG, JPG, JPEG, GIF'
+    
+    # Check file content type
+    file.seek(0)
+    header = file.read(512)
+    file.seek(0)
+    
+    format = imghdr.what(None, header)
+    if not format or format not in ['jpeg', 'png', 'gif']:
+        return False, 'Файл не является изображением'
+    
+    return True, 'OK'
+
+def generate_unique_filename(original_filename):
+    """Generate unique filename for uploaded image (normalized to .jpg)"""
+    unique_id = str(uuid.uuid4())[:8]
+    secure_name = secure_filename(original_filename.rsplit('.', 1)[0])
+    return f"{unique_id}_{secure_name}.jpg"
+
+def process_product_image(file, filename):
+    """Process uploaded product image - resize and create thumbnail (all saved as JPEG)"""
+    try:
+        # Open and process the image
+        image = Image.open(file)
+        
+        # Convert RGBA to RGB if necessary
+        if image.mode == 'RGBA':
+            background = Image.new('RGB', image.size, (255, 255, 255))
+            background.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
+            image = background
+        elif image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        # Auto-orient the image
+        image = ImageOps.exif_transpose(image)
+        
+        # Resize main image if it's too large
+        max_size = (app.config['MAX_IMAGE_WIDTH'], app.config['MAX_IMAGE_HEIGHT'])
+        image.thumbnail(max_size, Image.Resampling.LANCZOS)
+        
+        # Save main image as JPEG (filename already has .jpg extension)
+        main_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'products', filename)
+        os.makedirs(os.path.dirname(main_image_path), exist_ok=True)
+        image.save(main_image_path, 'JPEG', quality=85, optimize=True)
+        
+        # Create and save thumbnail as JPEG
+        thumbnail = image.copy()
+        thumbnail.thumbnail(app.config['THUMBNAIL_SIZE'], Image.Resampling.LANCZOS)
+        
+        thumbnail_path = os.path.join(app.config['UPLOAD_FOLDER'], 'products', 'thumbnails', filename)
+        os.makedirs(os.path.dirname(thumbnail_path), exist_ok=True)
+        thumbnail.save(thumbnail_path, 'JPEG', quality=80, optimize=True)
+        
+        return True, filename
+        
+    except Exception as e:
+        return False, f'Ошибка обработки изображения: {str(e)}'
+
+def delete_product_image(filename):
+    """Delete product image and thumbnail"""
+    if not filename:
+        return
+    
+    main_image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'products', filename)
+    thumbnail_path = os.path.join(app.config['UPLOAD_FOLDER'], 'products', 'thumbnails', filename)
+    
+    # Delete main image
+    if os.path.exists(main_image_path):
+        try:
+            os.remove(main_image_path)
+        except OSError:
+            pass
+    
+    # Delete thumbnail
+    if os.path.exists(thumbnail_path):
+        try:
+            os.remove(thumbnail_path)
+        except OSError:
+            pass
 
 # Routes
 @app.route('/')
@@ -997,7 +1093,8 @@ def start_transaction():
             transaction_number=generate_transaction_number(),
             status=TransactionStatus.PENDING,
             cashier_name=cashier_name,
-            customer_name=customer_name
+            customer_name=customer_name,
+            user_id=current_user.id
         )
         
         db.session.add(transaction)
@@ -1238,6 +1335,86 @@ def suspend_transaction():
         db.session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/suspended_transactions', methods=['GET'])
+@login_required
+def get_suspended_transactions():
+    """Get list of suspended transactions for current user"""
+    try:
+        suspended_transactions = Transaction.query.filter_by(
+            status=TransactionStatus.SUSPENDED,
+            user_id=current_user.id
+        ).order_by(Transaction.created_at.desc()).all()
+        
+        transactions_data = []
+        for transaction in suspended_transactions:
+            items_count = len(transaction.items)
+            transactions_data.append({
+                'id': transaction.id,
+                'transaction_number': transaction.transaction_number,
+                'created_at': transaction.created_at.strftime('%d.%m.%Y %H:%M'),
+                'cashier_name': transaction.cashier_name or 'Кассир',
+                'customer_name': transaction.customer_name or '',
+                'total_amount': float(transaction.total_amount),
+                'items_count': items_count
+            })
+        
+        return jsonify({
+            'success': True,
+            'transactions': transactions_data
+        })
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/transaction/restore', methods=['POST'])
+@login_required
+def restore_transaction():
+    """Restore suspended transaction"""
+    try:
+        data = request.get_json() or {}
+        transaction_id = data.get('transaction_id')
+        
+        if not transaction_id:
+            return jsonify({'success': False, 'error': 'Не указан ID транзакции'}), 400
+        
+        # Check if there's already an active transaction
+        current_transaction_id = session.get('current_transaction_id')
+        if current_transaction_id:
+            current_transaction = Transaction.query.get(current_transaction_id)
+            if current_transaction and current_transaction.status == TransactionStatus.PENDING:
+                return jsonify({
+                    'success': False, 
+                    'error': 'Завершите или отложите текущую транзакцию перед восстановлением'
+                }), 400
+        
+        transaction = Transaction.query.filter_by(
+            id=transaction_id,
+            user_id=current_user.id
+        ).first()
+        if not transaction:
+            return jsonify({'success': False, 'error': 'Транзакция не найдена или не принадлежит вам'}), 404
+        
+        if transaction.status != TransactionStatus.SUSPENDED:
+            return jsonify({'success': False, 'error': 'Транзакция не отложена'}), 400
+        
+        # Restore transaction
+        transaction.status = TransactionStatus.PENDING
+        db.session.commit()
+        
+        # Set as current transaction
+        session['current_transaction_id'] = transaction.id
+        
+        return jsonify({
+            'success': True,
+            'message': f'Чек {transaction.transaction_number} восстановлен',
+            'transaction_id': transaction.id,
+            'transaction_number': transaction.transaction_number
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/transaction/remove_item', methods=['POST'])
 def remove_item_from_transaction():
     """Remove item from current transaction"""
@@ -1357,6 +1534,87 @@ def update_product(product_id):
         return jsonify({
             'success': True,
             'message': 'Товар успешно обновлен'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/products/<int:product_id>/upload-image', methods=['POST'])
+@login_required
+@require_role(UserRole.MANAGER)
+def upload_product_image(product_id):
+    """Upload image for product"""
+    try:
+        product = Product.query.get_or_404(product_id)
+        
+        # Check if file was uploaded
+        if 'image' not in request.files:
+            return jsonify({'success': False, 'error': 'Файл не выбран'}), 400
+            
+        file = request.files['image']
+        
+        # Validate the uploaded file
+        is_valid, message = validate_image(file)
+        if not is_valid:
+            return jsonify({'success': False, 'error': message}), 400
+        
+        # Generate unique filename
+        filename = generate_unique_filename(file.filename)
+        
+        # Delete old image if exists
+        if product.image_filename:
+            delete_product_image(product.image_filename)
+        
+        # Process and save the new image
+        success, result = process_product_image(file, filename)
+        if not success:
+            return jsonify({'success': False, 'error': result}), 500
+        
+        # Update product record
+        product.image_filename = filename
+        product.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        log_operation('product_image_upload', f'Image uploaded for product: {product.name}', 'product', product.id)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Изображение успешно загружено',
+            'image_filename': filename,
+            'image_url': f'/static/images/products/{filename}',
+            'thumbnail_url': f'/static/images/products/thumbnails/{filename}'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/products/<int:product_id>/delete-image', methods=['DELETE'])
+@login_required
+@require_role(UserRole.MANAGER)
+def delete_product_image_api(product_id):
+    """Delete product image"""
+    try:
+        product = Product.query.get_or_404(product_id)
+        
+        if not product.image_filename:
+            return jsonify({'success': False, 'error': 'У товара нет изображения'}), 400
+        
+        # Delete image files
+        delete_product_image(product.image_filename)
+        
+        # Update product record
+        old_filename = product.image_filename
+        product.image_filename = None
+        product.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        log_operation('product_image_delete', f'Image deleted for product: {product.name}', 'product', product.id)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Изображение успешно удалено'
         })
         
     except Exception as e:

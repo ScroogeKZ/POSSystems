@@ -95,24 +95,36 @@
                         <table class="table table-striped">
                             <thead class="table-dark">
                                 <tr>
-                                    <th style="width: 10%;">{{ get_text('Артикул', 'SKU') }}</th>
-                                    <th style="width: 25%;">{{ get_text('Атауы', 'Название') }}</th>
-                                    <th style="width: 12%;">{{ get_text('Санат', 'Категория') }}</th>
-                                    <th style="width: 15%;">{{ get_text('Баға', 'Цена') }}</th>
-                                    <th style="width: 10%;">{{ get_text('Қалдық', 'Остаток') }}</th>
-                                    <th style="width: 8%;">{{ get_text('Өлш. бірл.', 'Ед. изм.') }}</th>
+                                    <th style="width: 8%;">{{ get_text('Сурет', 'Фото') }}</th>
+                                    <th style="width: 8%;">{{ get_text('Артикул', 'SKU') }}</th>
+                                    <th style="width: 20%;">{{ get_text('Атауы', 'Название') }}</th>
+                                    <th style="width: 10%;">{{ get_text('Санат', 'Категория') }}</th>
+                                    <th style="width: 12%;">{{ get_text('Баға', 'Цена') }}</th>
+                                    <th style="width: 8%;">{{ get_text('Қалдық', 'Остаток') }}</th>
+                                    <th style="width: 6%;">{{ get_text('Өлш. бірл.', 'Ед. изм.') }}</th>
                                     <th style="width: 10%;">{{ get_text('Жеткізуші', 'Поставщик') }}</th>
-                                    <th style="width: 10%;">{{ get_text('Әрекеттер', 'Действия') }}</th>
+                                    <th style="width: 18%;">{{ get_text('Әрекеттер', 'Действия') }}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for product in products %}
                                 <tr{% if product.stock_quantity <= product.min_stock_level %} class="table-warning"{% elif product.stock_quantity == 0 %} class="table-danger"{% endif %}>
+                                    <td class="text-center">
+                                        {% if product.image_filename %}
+                                        <img src="/static/images/products/thumbnails/{{ product.image_filename }}" 
+                                             alt="{{ product.name }}" 
+                                             class="img-thumbnail" 
+                                             style="width: 50px; height: 50px; object-fit: cover;"
+                                             onclick="showImageModal('{{ product.image_filename }}', '{{ product.name }}')">
+                                        {% else %}
+                                        <div class="d-flex align-items-center justify-content-center bg-light border rounded" 
+                                             style="width: 50px; height: 50px;">
+                                            <i class="fas fa-image text-muted"></i>
+                                        </div>
+                                        {% endif %}
+                                    </td>
                                     <td>
                                         <code>{{ product.sku }}</code>
-                                        {% if product.image_filename %}
-                                        <br><small class="text-muted"><i class="fas fa-image"></i></small>
-                                        {% endif %}
                                     </td>
                                     <td>
                                         <strong>{{ product.translated_name }}</strong>
@@ -150,15 +162,25 @@
                                     </td>
                                     <td>{{ product.supplier.name if product.supplier else '<span class="text-muted">-</span>' | safe }}</td>
                                     <td>
-                                        <div class="btn-group btn-group-sm">
+                                        <div class="btn-group btn-group-sm mb-1">
                                             <button class="btn btn-outline-primary" title="{{ get_text('Өңдеу', 'Редактировать') }}" onclick="editProduct({{ product.id }})">
                                                 <i class="fas fa-edit"></i>
                                             </button>
                                             <button class="btn btn-outline-success" title="{{ get_text('Қалдықты өзгерту', 'Изменить остаток') }}" onclick="adjustStock({{ product.id }})">
                                                 <i class="fas fa-warehouse"></i>
                                             </button>
+                                        </div>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-info" title="{{ get_text('Сурет жүктеу', 'Загрузить фото') }}" onclick="uploadImage({{ product.id }})">
+                                                <i class="fas fa-camera"></i>
+                                            </button>
+                                            {% if product.image_filename %}
+                                            <button class="btn btn-outline-danger" title="{{ get_text('Суретті өшіру', 'Удалить фото') }}" onclick="deleteImage({{ product.id }})">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                            {% endif %}
                                             <div class="btn-group" role="group">
-                                                <button class="btn btn-outline-info btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                                                <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
                                                     <i class="fas fa-ellipsis-h"></i>
                                                 </button>
                                                 <ul class="dropdown-menu">
@@ -173,7 +195,7 @@
                                 </tr>
                                 {% else %}
                                 <tr>
-                                    <td colspan="8" class="text-center py-5">
+                                    <td colspan="9" class="text-center py-5">
                                         <i class="fas fa-search fa-3x text-muted mb-3"></i>
                                         <h5 class="text-muted">{{ get_text('Тауарлар табылмады', 'Товары не найдены') }}</h5>
                                         <p class="text-muted">{{ get_text('Іздеу критерийлерін өзгертіп көріңіз', 'Попробуйте изменить критерии поиска') }}</p>
@@ -222,6 +244,110 @@ function exportInventory() {
     const formData = new FormData(form);
     const params = new URLSearchParams(formData);
     window.location.href = '/inventory/export?' + params.toString();
+}
+
+// Image management functions
+function showImageModal(filename, productName) {
+    // Create and show image modal
+    const modalHtml = `
+        <div class="modal fade" id="imageViewModal" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">${productName}</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body text-center">
+                        <img src="/static/images/products/${filename}" class="img-fluid" alt="${productName}">
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Remove existing modal if present
+    const existingModal = document.getElementById('imageViewModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Add modal to page and show
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    const modal = new bootstrap.Modal(document.getElementById('imageViewModal'));
+    modal.show();
+    
+    // Clean up when modal is hidden
+    document.getElementById('imageViewModal').addEventListener('hidden.bs.modal', function() {
+        this.remove();
+    });
+}
+
+function uploadImage(productId) {
+    // Create file input and trigger selection
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = function(event) {
+        const file = event.target.files[0];
+        if (file) {
+            uploadImageFile(productId, file);
+        }
+    };
+    input.click();
+}
+
+function uploadImageFile(productId, file) {
+    const formData = new FormData();
+    formData.append('image', file);
+    
+    // Show loading state
+    const uploadBtn = document.querySelector(`button[onclick="uploadImage(${productId})"]`);
+    const originalContent = uploadBtn.innerHTML;
+    uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    uploadBtn.disabled = true;
+    
+    fetch(`/api/products/${productId}/upload-image`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(data.message);
+            location.reload(); // Refresh to show new image
+        } else {
+            alert('Ошибка: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Upload error:', error);
+        alert('Ошибка загрузки изображения');
+    })
+    .finally(() => {
+        uploadBtn.innerHTML = originalContent;
+        uploadBtn.disabled = false;
+    });
+}
+
+function deleteImage(productId) {
+    if (confirm('{{ get_text("Суретті өшіру керек пе?", "Удалить изображение?") }}')) {
+        fetch(`/api/products/${productId}/delete-image`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(data.message);
+                location.reload(); // Refresh to hide image
+            } else {
+                alert('Ошибка: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Delete error:', error);
+            alert('Ошибка удаления изображения');
+        });
+    }
 }
 </script>
 

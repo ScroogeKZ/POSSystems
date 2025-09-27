@@ -157,9 +157,18 @@
 
                     <!-- Action Buttons -->
                     <div class="action-buttons">
-                        <button id="startTransaction" class="btn btn-start">
-                            <i class="fas fa-play me-2"></i>Начать продажу
-                        </button>
+                        <div class="row g-2 mb-2">
+                            <div class="col-6">
+                                <button id="showSuspendedBtn" class="btn btn-outline-info w-100">
+                                    <i class="fas fa-history me-2"></i>Отложенные
+                                </button>
+                            </div>
+                            <div class="col-6">
+                                <button id="startTransaction" class="btn btn-start">
+                                    <i class="fas fa-play me-2"></i>Начать продажу
+                                </button>
+                            </div>
+                        </div>
                         
                         <div id="transactionActions" style="display: none;">
                             <div class="row g-2 mb-3">
@@ -295,7 +304,17 @@ function displaySearchResults(products) {
         <div class="product-card card mb-2" data-product-id="${product.id}" data-product-name="${product.name.replace(/"/g, '&quot;')}" data-product-price="${product.price}" onclick="addToCartSafe(this)">
             <div class="card-body py-2">
                 <div class="row align-items-center">
+                    ${product.image_filename ? `
+                    <div class="col-2">
+                        <img src="/static/images/products/thumbnails/${product.image_filename}" 
+                             alt="${product.name}" 
+                             class="img-thumbnail" 
+                             style="width: 40px; height: 40px; object-fit: cover;">
+                    </div>
+                    <div class="col-6">
+                    ` : `
                     <div class="col-8">
+                    `}
                         <h6 class="card-title mb-1">${product.name}</h6>
                         <small class="text-muted">Артикул: ${product.sku}</small>
                     </div>
@@ -807,5 +826,107 @@ function showPromoCodeFeedback(message, type) {
     }
 }
 
+// Suspended transactions functionality
+async function showSuspendedTransactions() {
+    try {
+        const response = await fetch('/api/suspended_transactions');
+        const result = await response.json();
+        
+        if (result.success) {
+            const transactions = result.transactions;
+            const modalBody = document.getElementById('suspendedTransactionsBody');
+            
+            if (transactions.length === 0) {
+                modalBody.innerHTML = '<p class="text-muted">Нет отложенных чеков</p>';
+            } else {
+                let html = '<div class="table-responsive"><table class="table table-hover">';
+                html += '<thead><tr><th>№ Чека</th><th>Дата</th><th>Кассир</th><th>Товаров</th><th>Сумма</th><th>Действие</th></tr></thead><tbody>';
+                
+                transactions.forEach(transaction => {
+                    html += `<tr>
+                        <td><strong>${transaction.transaction_number}</strong></td>
+                        <td>${transaction.created_at}</td>
+                        <td>${transaction.cashier_name}</td>
+                        <td>${transaction.items_count}</td>
+                        <td>${transaction.total_amount.toFixed(2)} ₸</td>
+                        <td>
+                            <button class="btn btn-sm btn-success" onclick="restoreTransaction(${transaction.id})">
+                                <i class="fas fa-undo me-1"></i>Восстановить
+                            </button>
+                        </td>
+                    </tr>`;
+                });
+                
+                html += '</tbody></table></div>';
+                modalBody.innerHTML = html;
+            }
+            
+            new bootstrap.Modal(document.getElementById('suspendedTransactionsModal')).show();
+        } else {
+            alert('Ошибка загрузки отложенных чеков: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Error loading suspended transactions:', error);
+        alert('Ошибка связи с сервером');
+    }
+}
+
+async function restoreTransaction(transactionId) {
+    if (currentTransaction) {
+        if (!confirm('У вас есть активная транзакция. Завершите или отложите ее перед восстановлением другой.')) {
+            return;
+        }
+    }
+    
+    try {
+        const response = await fetch('/api/transaction/restore', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                transaction_id: transactionId
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            alert(result.message);
+            bootstrap.Modal.getInstance(document.getElementById('suspendedTransactionsModal')).hide();
+            location.reload(); // Reload to refresh the interface
+        } else {
+            alert('Ошибка: ' + result.error);
+        }
+    } catch (error) {
+        console.error('Restore error:', error);
+        alert('Ошибка связи с сервером');
+    }
+}
+
+// Add event listener for suspended transactions button
+document.getElementById('showSuspendedBtn').addEventListener('click', showSuspendedTransactions);
+
 </script>
+
+<!-- Suspended Transactions Modal -->
+<div class="modal fade" id="suspendedTransactionsModal" tabindex="-1" aria-labelledby="suspendedTransactionsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="suspendedTransactionsModalLabel">
+                    <i class="fas fa-history me-2"></i>Отложенные чеки
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="suspendedTransactionsBody">
+                <!-- Content will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}

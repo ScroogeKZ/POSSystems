@@ -12,6 +12,12 @@ class Config:
     UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'images')
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
     
+    # Image upload settings
+    ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+    MAX_IMAGE_WIDTH = 800
+    MAX_IMAGE_HEIGHT = 600
+    THUMBNAIL_SIZE = (200, 200)  # For POS display
+    
     # POS specific settings for Kazakhstan
     CURRENCY_SYMBOL = '₸'
     TAX_RATE = 0.12  # 12% VAT (Kazakhstan standard rate)
