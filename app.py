@@ -409,30 +409,60 @@ def search_products():
 @app.route('/inventory')
 @login_required
 def inventory():
-    """Inventory management page"""
+    """Inventory management page with advanced filters"""
     search = request.args.get('search', '')
     category_id = request.args.get('category_id')
-    low_stock = request.args.get('low_stock')
+    price_range = request.args.get('price_range', '')
+    stock_filter = request.args.get('stock_filter', '')
     
     query = Product.query.filter_by(is_active=True)
     
+    # Text search filter
     if search:
         query = query.filter(
             or_(
                 Product.name.ilike(f'%{search}%'),
-                Product.sku.ilike(f'%{search}%')
+                Product.sku.ilike(f'%{search}%'),
+                Product.description.ilike(f'%{search}%')
             )
         )
     
+    # Category filter
     if category_id:
         query = query.filter_by(category_id=category_id)
     
-    if low_stock:
-        query = query.filter(Product.stock_quantity <= Product.min_stock_level)
+    # Price range filter
+    if price_range:
+        if price_range == '0-500':
+            query = query.filter(Product.price.between(0, 500))
+        elif price_range == '500-1000':
+            query = query.filter(Product.price.between(500, 1000))
+        elif price_range == '1000-2000':
+            query = query.filter(Product.price.between(1000, 2000))
+        elif price_range == '2000+':
+            query = query.filter(Product.price >= 2000)
     
-    products = query.order_by(Product.name).all()
-    categories = Category.query.all()
-    suppliers = Supplier.query.filter_by(is_active=True).all()
+    # Stock filter
+    if stock_filter:
+        if stock_filter == 'low':
+            query = query.filter(Product.stock_quantity <= Product.min_stock_level)
+        elif stock_filter == 'zero':
+            query = query.filter(Product.stock_quantity == 0)
+        elif stock_filter == 'available':
+            query = query.filter(Product.stock_quantity > 0)
+    
+    # Order by stock status (critical first), then by name
+    products = query.order_by(
+        db.case(
+            (Product.stock_quantity == 0, 0),
+            (Product.stock_quantity <= Product.min_stock_level, 1),
+            else_=2
+        ),
+        Product.name
+    ).all()
+    
+    categories = Category.query.order_by(Category.name).all()
+    suppliers = Supplier.query.filter_by(is_active=True).order_by(Supplier.name).all()
     
     # Translate names for current language
     for product in products:
@@ -441,13 +471,18 @@ def inventory():
     for category in categories:
         category.translated_name = translate_name(category.name, 'categories')
     
+    # Legacy support for show_low_stock parameter
+    show_low_stock = stock_filter == 'low' or request.args.get('low_stock')
+    
     return render_template('inventory.html', 
                          products=products, 
                          categories=categories,
                          suppliers=suppliers,
                          search=search,
                          selected_category=category_id,
-                         show_low_stock=low_stock)
+                         show_low_stock=show_low_stock,
+                         price_range=price_range,
+                         stock_filter=stock_filter)
 
 @app.route('/reports')
 @login_required

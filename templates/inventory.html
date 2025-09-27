@@ -16,27 +16,75 @@
     </div>
 
     <!-- Filters -->
-    <div class="row mb-4">
-        <div class="col-md-6">
-            <input type="text" class="form-control" placeholder="{{ get_text('Атау немесе артикул бойынша іздеу...', 'Поиск по названию или артикулу...') }}">
-        </div>
-        <div class="col-md-3">
-            <select class="form-select">
-                <option value="">{{ get_text('Барлық санаттар', 'Все категории') }}</option>
-                {% for category in categories %}
-                <option value="{{ category.id }}">{{ category.translated_name }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        <div class="col-md-3">
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="lowStockOnly">
-                <label class="form-check-label" for="lowStockOnly">
-                    {{ get_text('Тек аз қалдықты тауарлар', 'Только товары с низким остатком') }}
-                </label>
+    <form id="inventoryFilter" method="GET">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-filter me-2"></i>{{ get_text('Іздеу және сүзу', 'Поиск и фильтры') }}
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">{{ get_text('Іздеу', 'Поиск') }}</label>
+                        <input type="text" name="search" class="form-control" 
+                               placeholder="{{ get_text('Атау немесе артикул бойынша іздеу...', 'Поиск по названию или артикулу...') }}" 
+                               value="{{ search or '' }}">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">{{ get_text('Санат', 'Категория') }}</label>
+                        <select name="category_id" class="form-select">
+                            <option value="">{{ get_text('Барлық санаттар', 'Все категории') }}</option>
+                            {% for category in categories %}
+                            <option value="{{ category.id }}" {% if selected_category and selected_category|int == category.id %}selected{% endif %}>
+                                {{ category.translated_name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">{{ get_text('Баға', 'Цена') }}</label>
+                        <select name="price_range" class="form-select">
+                            <option value="">{{ get_text('Барлық бағалар', 'Все цены') }}</option>
+                            <option value="0-500" {% if price_range == '0-500' %}selected{% endif %}>0 - 500 ₸</option>
+                            <option value="500-1000" {% if price_range == '500-1000' %}selected{% endif %}>500 - 1,000 ₸</option>
+                            <option value="1000-2000" {% if price_range == '1000-2000' %}selected{% endif %}>1,000 - 2,000 ₸</option>
+                            <option value="2000+" {% if price_range == '2000+' %}selected{% endif %}>2,000+ ₸</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">{{ get_text('Қалдық', 'Остаток') }}</label>
+                        <select name="stock_filter" class="form-select">
+                            <option value="">{{ get_text('Барлық тауарлар', 'Все товары') }}</option>
+                            <option value="low" {% if stock_filter == 'low' %}selected{% endif %}>{{ get_text('Аз қалдық', 'Низкий остаток') }}</option>
+                            <option value="zero" {% if stock_filter == 'zero' %}selected{% endif %}>{{ get_text('Нөлдік қалдық', 'Нулевой остаток') }}</option>
+                            <option value="available" {% if stock_filter == 'available' %}selected{% endif %}>{{ get_text('Қолжетімді', 'В наличии') }}</option>
+                        </select>
+                    </div>
+                    <div class="col-md-1 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="row mt-3">
+                    <div class="col-12">
+                        <div class="d-flex flex-wrap gap-2">
+                            <a href="{{ url_for('inventory') }}" class="btn btn-outline-secondary btn-sm">
+                                <i class="fas fa-times me-1"></i>{{ get_text('Тазарту', 'Очистить') }}
+                            </a>
+                            <button type="button" class="btn btn-outline-info btn-sm" onclick="exportInventory()">
+                                <i class="fas fa-download me-1"></i>{{ get_text('Экспорт', 'Экспорт') }}
+                            </button>
+                            <span class="badge bg-info fs-6 align-self-center">
+                                {{ get_text('Жалпы', 'Найдено') }}: {{ products|length }} {{ get_text('тауар', 'товаров') }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
+    </form>
 
     <!-- Products Table -->
     <div class="row">
@@ -45,49 +93,93 @@
                 <div class="card-body">
                     <div class="table-responsive">
                         <table class="table table-striped">
-                            <thead>
+                            <thead class="table-dark">
                                 <tr>
-                                    <th>{{ get_text('Артикул', 'SKU') }}</th>
-                                    <th>{{ get_text('Атауы', 'Название') }}</th>
-                                    <th>{{ get_text('Санат', 'Категория') }}</th>
-                                    <th>{{ get_text('Баға', 'Цена') }}</th>
-                                    <th>{{ get_text('Қалдық', 'Остаток') }}</th>
-                                    <th>{{ get_text('Өлш. бірл.', 'Ед. изм.') }}</th>
-                                    <th>{{ get_text('Жеткізуші', 'Поставщик') }}</th>
-                                    <th>{{ get_text('Әрекеттер', 'Действия') }}</th>
+                                    <th style="width: 10%;">{{ get_text('Артикул', 'SKU') }}</th>
+                                    <th style="width: 25%;">{{ get_text('Атауы', 'Название') }}</th>
+                                    <th style="width: 12%;">{{ get_text('Санат', 'Категория') }}</th>
+                                    <th style="width: 15%;">{{ get_text('Баға', 'Цена') }}</th>
+                                    <th style="width: 10%;">{{ get_text('Қалдық', 'Остаток') }}</th>
+                                    <th style="width: 8%;">{{ get_text('Өлш. бірл.', 'Ед. изм.') }}</th>
+                                    <th style="width: 10%;">{{ get_text('Жеткізуші', 'Поставщик') }}</th>
+                                    <th style="width: 10%;">{{ get_text('Әрекеттер', 'Действия') }}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for product in products %}
-                                <tr{% if product.is_low_stock %} class="table-warning"{% endif %}>
-                                    <td>{{ product.sku }}</td>
+                                <tr{% if product.stock_quantity <= product.min_stock_level %} class="table-warning"{% elif product.stock_quantity == 0 %} class="table-danger"{% endif %}>
+                                    <td>
+                                        <code>{{ product.sku }}</code>
+                                        {% if product.image_filename %}
+                                        <br><small class="text-muted"><i class="fas fa-image"></i></small>
+                                        {% endif %}
+                                    </td>
                                     <td>
                                         <strong>{{ product.translated_name }}</strong>
                                         {% if product.description %}
                                         <br><small class="text-muted">{{ product.description }}</small>
                                         {% endif %}
+                                        {% if product.cost_price and product.cost_price > 0 %}
+                                        <br><small class="text-info">{{ get_text('Келу бағасы', 'Себест.') }}: {{ "%.2f"|format(product.cost_price) }} ₸</small>
+                                        {% endif %}
                                     </td>
-                                    <td>{{ translate_name(product.category.name, 'categories') if product.category else '-' }}</td>
-                                    <td>{{ "%.2f"|format(product.price) }} ₸</td>
                                     <td>
-                                        <span{% if product.is_low_stock %} class="low-stock"{% endif %}>
-                                            {{ product.stock_quantity }}
-                                        </span>
+                                        <span class="badge bg-secondary">{{ translate_name(product.category.name, 'categories') if product.category else '-' }}</span>
+                                    </td>
+                                    <td>
+                                        <strong>{{ "%.2f"|format(product.price) }} ₸</strong>
+                                        {% if product.cost_price and product.cost_price > 0 %}
+                                        {% set profit = product.price - product.cost_price %}
+                                        <br><small class="{% if profit > 0 %}text-success{% else %}text-danger{% endif %}">{{ get_text('Пайда', 'Прибыль') }}: {{ "%.2f"|format(profit) }} ₸</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if product.stock_quantity <= 0 %}
+                                        <span class="badge bg-danger">{{ get_text('Жоқ', 'Нет в наличии') }}</span>
+                                        {% elif product.stock_quantity <= product.min_stock_level %}
+                                        <span class="badge bg-warning text-dark">{{ product.stock_quantity }}</span>
+                                        {% else %}
+                                        <span class="badge bg-success">{{ product.stock_quantity }}</span>
+                                        {% endif %}
                                         {% if product.min_stock_level > 0 %}
                                         <br><small class="text-muted">{{ get_text('Ең аз', 'Мин') }}: {{ product.min_stock_level }}</small>
                                         {% endif %}
                                     </td>
-                                    <td>{{ product.translated_unit }}</td>
-                                    <td>{{ product.supplier.name if product.supplier else '-' }}</td>
+                                    <td>
+                                        <span class="badge bg-light text-dark">{{ product.translated_unit }}</span>
+                                    </td>
+                                    <td>{{ product.supplier.name if product.supplier else '<span class="text-muted">-</span>' | safe }}</td>
                                     <td>
                                         <div class="btn-group btn-group-sm">
-                                            <button class="btn btn-outline-primary" title="{{ get_text('Өңдеу', 'Редактировать') }}">
+                                            <button class="btn btn-outline-primary" title="{{ get_text('Өңдеу', 'Редактировать') }}" onclick="editProduct({{ product.id }})">
                                                 <i class="fas fa-edit"></i>
                                             </button>
-                                            <button class="btn btn-outline-success" title="{{ get_text('Қалдықты өзгерту', 'Изменить остаток') }}">
+                                            <button class="btn btn-outline-success" title="{{ get_text('Қалдықты өзгерту', 'Изменить остаток') }}" onclick="adjustStock({{ product.id }})">
                                                 <i class="fas fa-warehouse"></i>
                                             </button>
+                                            <div class="btn-group" role="group">
+                                                <button class="btn btn-outline-info btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                                                    <i class="fas fa-ellipsis-h"></i>
+                                                </button>
+                                                <ul class="dropdown-menu">
+                                                    <li><a class="dropdown-item" href="#" onclick="viewProductHistory({{ product.id }})"><i class="fas fa-history me-2"></i>{{ get_text('Тарих', 'История') }}</a></li>
+                                                    <li><a class="dropdown-item" href="#" onclick="printLabel({{ product.id }})"><i class="fas fa-barcode me-2"></i>{{ get_text('Жапсырма', 'Этикетка') }}</a></li>
+                                                    <li><hr class="dropdown-divider"></li>
+                                                    <li><a class="dropdown-item text-danger" href="#" onclick="deleteProduct({{ product.id }})"><i class="fas fa-trash me-2"></i>{{ get_text('Өшіру', 'Удалить') }}</a></li>
+                                                </ul>
+                                            </div>
                                         </div>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="8" class="text-center py-5">
+                                        <i class="fas fa-search fa-3x text-muted mb-3"></i>
+                                        <h5 class="text-muted">{{ get_text('Тауарлар табылмады', 'Товары не найдены') }}</h5>
+                                        <p class="text-muted">{{ get_text('Іздеу критерийлерін өзгертіп көріңіз', 'Попробуйте изменить критерии поиска') }}</p>
+                                        <a href="{{ url_for('inventory') }}" class="btn btn-outline-primary">
+                                            <i class="fas fa-times me-1"></i>{{ get_text('Сүзгілерді тазарту', 'Очистить фильтры') }}
+                                        </a>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -99,4 +191,38 @@
         </div>
     </div>
 </div>
+
+<script>
+// Auto-submit form on filter change
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('inventoryFilter');
+    const selects = form.querySelectorAll('select');
+    
+    selects.forEach(select => {
+        select.addEventListener('change', function() {
+            form.submit();
+        });
+    });
+    
+    // Search with debounce
+    let searchTimeout;
+    const searchInput = form.querySelector('input[name="search"]');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                form.submit();
+            }, 800);
+        });
+    }
+});
+
+function exportInventory() {
+    const form = document.getElementById('inventoryFilter');
+    const formData = new FormData(form);
+    const params = new URLSearchParams(formData);
+    window.location.href = '/inventory/export?' + params.toString();
+}
+</script>
+
 {% endblock %}
