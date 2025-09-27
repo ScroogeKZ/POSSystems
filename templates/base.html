@@ -257,30 +257,62 @@
                 <i class="fas fa-cash-register me-2"></i>{{ get_text('POS Жүйесі', 'POS Система') }}
             </a>
             <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="{{ url_for('pos') }}">
-                    <i class="fas fa-shopping-cart me-1"></i>{{ get_text('Кассалық бөлім', 'Касса') }}
-                </a>
-                <a class="nav-link" href="{{ url_for('inventory') }}">
-                    <i class="fas fa-boxes me-1"></i>{{ get_text('Қойма', 'Инвентарь') }}
-                </a>
-                <a class="nav-link" href="{{ url_for('reports') }}">
-                    <i class="fas fa-chart-bar me-1"></i>{{ get_text('Есептер', 'Отчеты') }}
-                </a>
-                <!-- Language Switcher -->
-                <div class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="languageDropdown" role="button" data-bs-toggle="dropdown">
-                        <i class="fas fa-globe me-1"></i>
-                        {{ 'ҚАЗ' if get_language() == 'kk' else 'РУС' }}
+                {% if current_user.is_authenticated %}
+                    <a class="nav-link" href="{{ url_for('pos') }}">
+                        <i class="fas fa-shopping-cart me-1"></i>{{ get_text('Кассалық бөлім', 'Касса') }}
                     </a>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        <li><a class="dropdown-item {% if get_language() == 'kk' %}active{% endif %}" href="{{ url_for('set_language', language='kk') }}">
-                            🇰🇿 Қазақша
-                        </a></li>
-                        <li><a class="dropdown-item {% if get_language() == 'ru' %}active{% endif %}" href="{{ url_for('set_language', language='ru') }}">
-                            🇷🇺 Русский
-                        </a></li>
-                    </ul>
-                </div>
+                    <a class="nav-link" href="{{ url_for('inventory') }}">
+                        <i class="fas fa-boxes me-1"></i>{{ get_text('Қойма', 'Инвентарь') }}
+                    </a>
+                    <a class="nav-link" href="{{ url_for('reports') }}">
+                        <i class="fas fa-chart-bar me-1"></i>{{ get_text('Есептер', 'Отчеты') }}
+                    </a>
+                    {% if current_user.can_access(UserRole.MANAGER) %}
+                        <a class="nav-link" href="{{ url_for('users') }}">
+                            <i class="fas fa-users me-1"></i>{{ get_text('Пайдаланушылар', 'Пользователи') }}
+                        </a>
+                    {% endif %}
+                    <!-- Language Switcher -->
+                    <div class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="languageDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-globe me-1"></i>
+                            {{ 'ҚАЗ' if get_language() == 'kk' else 'РУС' }}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item {% if get_language() == 'kk' %}active{% endif %}" href="{{ url_for('set_language', language='kk') }}">
+                                🇰🇿 Қазақша
+                            </a></li>
+                            <li><a class="dropdown-item {% if get_language() == 'ru' %}active{% endif %}" href="{{ url_for('set_language', language='ru') }}">
+                                🇷🇺 Русский
+                            </a></li>
+                        </ul>
+                    </div>
+                    <!-- User Menu -->
+                    <div class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-user me-1"></i>{{ current_user.first_name }}
+                            {% if current_user.role.value == 'admin' %}
+                                <span class="badge bg-warning ms-1">👑</span>
+                            {% elif current_user.role.value == 'manager' %}
+                                <span class="badge bg-info ms-1">👨‍💼</span>
+                            {% else %}
+                                <span class="badge bg-success ms-1">🧾</span>
+                            {% endif %}
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><h6 class="dropdown-header">{{ current_user.full_name }}</h6></li>
+                            <li><span class="dropdown-item-text small text-muted">{{ current_user.email }}</span></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{{ url_for('logout') }}">
+                                <i class="fas fa-sign-out-alt me-2"></i>{{ get_text('Шығу', 'Выход') }}
+                            </a></li>
+                        </ul>
+                    </div>
+                {% else %}
+                    <a class="nav-link" href="{{ url_for('login') }}">
+                        <i class="fas fa-sign-in-alt me-1"></i>{{ get_text('Кіру', 'Вход') }}
+                    </a>
+                {% endif %}
             </div>
         </div>
     </nav>

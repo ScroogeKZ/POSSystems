@@ -1,9 +1,17 @@
 from flask_sqlalchemy import SQLAlchemy
+from flask_login import UserMixin
+from flask_bcrypt import Bcrypt
 from datetime import datetime
 from enum import Enum
 from sqlalchemy import func
 
 db = SQLAlchemy()
+bcrypt = Bcrypt()
+
+class UserRole(Enum):
+    CASHIER = "cashier"
+    MANAGER = "manager"
+    ADMIN = "admin"
 
 class PaymentMethod(Enum):
     CASH = "cash"
@@ -22,6 +30,58 @@ class UnitType(Enum):
     LITER = "л."
     METER = "м."
     PACK = "упак."
+
+class User(UserMixin, db.Model):
+    __tablename__ = 'users'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    first_name = db.Column(db.String(50), nullable=False)
+    last_name = db.Column(db.String(50), nullable=False)
+    role = db.Column(db.Enum(UserRole), default=UserRole.CASHIER)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    last_login = db.Column(db.DateTime)
+    
+    # Relationships
+    transactions = db.relationship('Transaction', backref='user', lazy=True, foreign_keys='Transaction.user_id')
+    operation_logs = db.relationship('OperationLog', backref='user', lazy=True, foreign_keys='OperationLog.user_id')
+    
+    def set_password(self, password):
+        """Set password hash using bcrypt"""
+        self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+    
+    def check_password(self, password):
+        """Check password against hash"""
+        return bcrypt.check_password_hash(self.password_hash, password)
+    
+    @property
+    def full_name(self):
+        """Get user's full name"""
+        return f"{self.first_name} {self.last_name}"
+    
+    @property
+    def is_cashier(self):
+        return self.role == UserRole.CASHIER
+    
+    @property
+    def is_manager(self):
+        return self.role == UserRole.MANAGER
+    
+    @property
+    def is_admin(self):
+        return self.role == UserRole.ADMIN
+    
+    def can_access(self, required_role):
+        """Check if user has required role or higher"""
+        role_hierarchy = {
+            UserRole.CASHIER: 1,
+            UserRole.MANAGER: 2,
+            UserRole.ADMIN: 3
+        }
+        return role_hierarchy.get(self.role, 0) >= role_hierarchy.get(required_role, 0)
 
 class Supplier(db.Model):
     __tablename__ = 'suppliers'
@@ -102,6 +162,9 @@ class Transaction(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime)
     
+    # Foreign key for user tracking
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    
     # Relationships
     items = db.relationship('TransactionItem', backref='transaction', lazy=True, cascade='all, delete-orphan')
     payments = db.relationship('Payment', backref='transaction', lazy=True, cascade='all, delete-orphan')
@@ -130,6 +193,23 @@ class Payment(db.Model):
     
     # Foreign key
     transaction_id = db.Column(db.Integer, db.ForeignKey('transactions.id'), nullable=False)
+
+class OperationLog(db.Model):
+    __tablename__ = 'operation_logs'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    action = db.Column(db.String(100), nullable=False)  # login, sale, inventory_update, etc.
+    description = db.Column(db.Text)
+    entity_type = db.Column(db.String(50))  # transaction, product, user, etc.
+    entity_id = db.Column(db.Integer)  # ID of the affected entity
+    old_values = db.Column(db.Text)  # JSON string of old values
+    new_values = db.Column(db.Text)  # JSON string of new values
+    ip_address = db.Column(db.String(45))
+    user_agent = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Foreign key
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
 class PurchaseOrder(db.Model):
     __tablename__ = 'purchase_orders'

@@ -6,103 +6,314 @@
 <div class="container-fluid py-4">
     <div class="row">
         <div class="col-12">
-            <h1 class="mb-4">Есептер мен талдаулар / Отчеты и аналитика</h1>
+            <h1 class="mb-4">📊 Есептер мен талдаулар / Отчеты и аналитика</h1>
         </div>
     </div>
 
     <!-- Date Range Filter -->
     <div class="row mb-4">
-        <div class="col-md-6">
+        <div class="col-md-8">
             <div class="card">
                 <div class="card-body">
-                    <h5 class="card-title">Есеп кезеңі / Период отчета</h5>
-                    <form method="GET">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <label class="form-label">Басталу күні / Начальная дата</label>
-                                <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">Аяқталу күні / Конечная дата</label>
-                                <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
-                            </div>
+                    <h5 class="card-title">📅 Есеп кезеңі / Период отчета</h5>
+                    <form method="GET" class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label">Басталу күні / Начальная дата</label>
+                            <input type="date" name="start_date" class="form-control" value="{{ start_date }}">
                         </div>
-                        <button type="submit" class="btn btn-primary mt-3">Есепті жаңарту / Обновить отчет</button>
+                        <div class="col-md-3">
+                            <label class="form-label">Аяқталу күні / Конечная дата</label>
+                            <input type="date" name="end_date" class="form-control" value="{{ end_date }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Есеп түрі / Тип отчета</label>
+                            <select name="type" class="form-select">
+                                <option value="overview" {% if report_type == 'overview' %}selected{% endif %}>Жалпы / Обзор</option>
+                                <option value="profit" {% if report_type == 'profit' %}selected{% endif %}>Пайда / Прибыль</option>
+                                <option value="categories" {% if report_type == 'categories' %}selected{% endif %}>Санаттар / Категории</option>
+                                <option value="inventory" {% if report_type == 'inventory' %}selected{% endif %}>Қойма / Склад</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary w-100">🔄 Жаңарту / Обновить</button>
+                        </div>
                     </form>
+                    <!-- Export Buttons -->
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <a href="/export/pdf?start_date={{ start_date }}&end_date={{ end_date }}" 
+                               class="btn btn-danger w-100" target="_blank">
+                                📄 PDF жүктеу / Скачать PDF
+                            </a>
+                        </div>
+                        <div class="col-md-6">
+                            <a href="/export/excel?start_date={{ start_date }}&end_date={{ end_date }}" 
+                               class="btn btn-success w-100" target="_blank">
+                                📊 Excel жүктеу / Скачать Excel
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    <h3>{{ "%.2f"|format(total_revenue or 0) }} ₸</h3>
+                    <p class="mb-1">💰 Жалпы кіріс / Общая выручка</p>
+                    <h4>{{ "%.2f"|format(total_profit or 0) }} ₸</h4>
+                    <p class="mb-1">📈 Жалпы пайда / Общая прибыль</p>
+                    <small>Рентабельность / Рентабельность: {{ "%.1f"|format(profit_margin or 0) }}%</small>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Sales Chart -->
+    <!-- Charts Row -->
     <div class="row mb-4">
-        <div class="col-12">
+        <!-- Revenue vs Profit Chart -->
+        <div class="col-lg-8">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="card-title mb-0">Сату динамикасы / Динамика продаж</h5>
+                    <h5 class="card-title mb-0">📊 Кіріс пен пайда динамикасы / Динамика выручки и прибыли</h5>
                 </div>
                 <div class="card-body">
-                    <canvas id="salesChart" height="100"></canvas>
+                    <canvas id="profitChart" height="100"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Category Distribution -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">🥧 Санат бойынша үлестіру / Распределение по категориям</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="categoryChart" height="200"></canvas>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Top Products -->
-    <div class="row">
-        <div class="col-md-6">
+    <!-- Analytics Tabs -->
+    <ul class="nav nav-tabs mb-4" id="analyticsTab" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button">
+                📋 Жалпы / Обзор
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="products-tab" data-bs-toggle="tab" data-bs-target="#products" type="button">
+                🏆 Топ тауарлар / Топ товары
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="categories-tab" data-bs-toggle="tab" data-bs-target="#categories" type="button">
+                📊 Санаттар / Категории
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="inventory-tab" data-bs-toggle="tab" data-bs-target="#inventory" type="button">
+                📦 Қойма / Склад
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="analyticsTabContent">
+        <!-- Overview Tab -->
+        <div class="tab-pane fade show active" id="overview" role="tabpanel">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h4 class="text-info">{{ daily_sales|length }}</h4>
+                            <p class="text-muted">Сауда күндері / Торговых дней</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h4 class="text-success">{{ "%.0f"|format((total_revenue / daily_sales|length) if daily_sales|length > 0 else 0) }} ₸</h4>
+                            <p class="text-muted">Күндік орташа кіріс / Средняя выручка в день</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h4 class="text-warning">{{ "%.0f"|format((total_profit / daily_sales|length) if daily_sales|length > 0 else 0) }} ₸</h4>
+                            <p class="text-muted">Күндік орташа пайда / Средняя прибыль в день</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h4 class="text-danger">{{ low_stock_items|length }}</h4>
+                            <p class="text-muted">Аз қалды / Заканчиваются</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Products Tab -->
+        <div class="tab-pane fade" id="products" role="tabpanel">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="card-title mb-0">Сатулар бойынша топ тауарлар / Топ товаров по продажам</h5>
+                    <h5 class="card-title mb-0">🏆 Сатулар бойынша топ тауарлар / Топ товаров по продажам</h5>
                 </div>
                 <div class="card-body">
                     {% if top_products %}
                         <div class="table-responsive">
-                            <table class="table table-sm">
-                                <thead>
+                            <table class="table table-hover">
+                                <thead class="table-light">
                                     <tr>
-                                        <th>Тауар / Товар</th>
-                                        <th>Сатылды / Продано</th>
-                                        <th>Кіріс / Выручка</th>
+                                        <th>📦 Тауар / Товар</th>
+                                        <th>📊 Сатылды / Продано</th>
+                                        <th>💰 Кіріс / Выручка</th>
+                                        <th>📈 Пайда / Прибыль</th>
+                                        <th>💡 Бірлік пайдасы / Прибыль за ед.</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for product in top_products %}
                                     <tr>
-                                        <td>{{ product.name }}</td>
-                                        <td>{{ "%.0f"|format(product.total_sold) }}</td>
+                                        <td><strong>{{ product.name }}</strong></td>
+                                        <td><span class="badge bg-info">{{ "%.0f"|format(product.total_sold) }}</span></td>
                                         <td>{{ "%.2f"|format(product.total_revenue) }} ₸</td>
+                                        <td><span class="text-success">{{ "%.2f"|format(product.total_profit or 0) }} ₸</span></td>
+                                        <td><span class="text-warning">{{ "%.2f"|format(product.avg_profit_per_unit or 0) }} ₸</span></td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
                         </div>
                     {% else %}
-                        <p class="text-muted">Таңдалған кезең үшін деректер жоқ / Нет данных за выбранный период</p>
+                        <div class="text-center py-4">
+                            <p class="text-muted">📭 Таңдалған кезең үшін деректер жоқ / Нет данных за выбранный период</p>
+                        </div>
                     {% endif %}
                 </div>
             </div>
         </div>
-        
-        <div class="col-md-6">
+
+        <!-- Categories Tab -->
+        <div class="tab-pane fade" id="categories" role="tabpanel">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="card-title mb-0">Жиынтық ақпарат / Сводная информация</h5>
+                    <h5 class="card-title mb-0">📊 Санат бойынша талдау / Анализ по категориям</h5>
                 </div>
                 <div class="card-body">
-                    {% set total_revenue = daily_sales|sum(attribute='total') %}
-                    <div class="row text-center">
-                        <div class="col-12 mb-3">
-                            <h3 class="text-primary">{{ "%.2f"|format(total_revenue or 0) }} ₸</h3>
-                            <p class="text-muted">Жалпы кіріс / Общая выручка</p>
+                    {% if category_analysis %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>📂 Санат / Категория</th>
+                                        <th>🛒 Транзакциялар / Транзакции</th>
+                                        <th>📦 Сатылды / Продано</th>
+                                        <th>💰 Кіріс / Выручка</th>
+                                        <th>📈 Пайда / Прибыль</th>
+                                        <th>📊 Рентабельность</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for category in category_analysis %}
+                                    {% set profit_margin = (category.total_profit / category.total_revenue * 100) if category.total_revenue > 0 else 0 %}
+                                    <tr>
+                                        <td><strong>{{ category.name }}</strong></td>
+                                        <td><span class="badge bg-primary">{{ category.total_transactions }}</span></td>
+                                        <td>{{ "%.0f"|format(category.total_sold) }}</td>
+                                        <td>{{ "%.2f"|format(category.total_revenue) }} ₸</td>
+                                        <td><span class="text-success">{{ "%.2f"|format(category.total_profit or 0) }} ₸</span></td>
+                                        <td>
+                                            <span class="badge {% if profit_margin > 20 %}bg-success{% elif profit_margin > 10 %}bg-warning{% else %}bg-danger{% endif %}">
+                                                {{ "%.1f"|format(profit_margin) }}%
+                                            </span>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
                         </div>
-                        <div class="col-6">
-                            <h4>{{ daily_sales|length }}</h4>
-                            <p class="text-muted">Сауда күндері / Торговых дней</p>
+                    {% else %}
+                        <div class="text-center py-4">
+                            <p class="text-muted">📭 Санат бойынша деректер жоқ / Нет данных по категориям</p>
                         </div>
-                        <div class="col-6">
-                            <h4>{{ "%.2f"|format((total_revenue / daily_sales|length) if daily_sales|length > 0 else 0) }} ₸</h4>
-                            <p class="text-muted">Күндік орташа / Средний чек в день</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Inventory Tab -->
+        <div class="tab-pane fade" id="inventory" role="tabpanel">
+            <div class="row">
+                <!-- Low Stock Alert -->
+                {% if low_stock_items %}
+                <div class="col-12 mb-4">
+                    <div class="alert alert-warning">
+                        <h6>⚠️ Аз қалған тауарлар / Заканчивающиеся товары ({{ low_stock_items|length }})</h6>
+                        <div class="row">
+                            {% for item in low_stock_items[:6] %}
+                            <div class="col-md-4 col-lg-2">
+                                <small><strong>{{ item.name }}</strong><br>
+                                Қалды / Остаток: {{ item.stock_quantity }} {{ item.sku }}
+                                </small>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% if low_stock_items|length > 6 %}
+                        <small class="text-muted">... және тағы {{ low_stock_items|length - 6 }} тауар / ... и еще {{ low_stock_items|length - 6 }} товаров</small>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+                
+                <!-- Inventory Table -->
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0">📦 Қойма есебі / Складской отчет</h5>
+                            <small class="text-muted">Жалпы тауарлар / Всего товаров: {{ inventory_report|length }}</small>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-sm table-hover" id="inventoryTable">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>📦 Тауар / Товар</th>
+                                            <th>🏷️ Артикул</th>
+                                            <th>📊 Қалды / Остаток</th>
+                                            <th>⚠️ Мин. деңгей / Мин. уровень</th>
+                                            <th>💰 Баға / Цена</th>
+                                            <th>📈 Пайда / Прибыль</th>
+                                            <th>📂 Санат / Категория</th>
+                                            <th>🏪 Жеткізуші / Поставщик</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for item in inventory_report %}
+                                        <tr {% if item.stock_quantity <= item.min_stock_level %}class="table-warning"{% endif %}>
+                                            <td><strong>{{ item.name }}</strong></td>
+                                            <td><code>{{ item.sku }}</code></td>
+                                            <td>
+                                                <span class="badge {% if item.stock_quantity <= item.min_stock_level %}bg-danger{% elif item.stock_quantity <= item.min_stock_level * 2 %}bg-warning{% else %}bg-success{% endif %}">
+                                                    {{ item.stock_quantity }}
+                                                </span>
+                                            </td>
+                                            <td>{{ item.min_stock_level }}</td>
+                                            <td>{{ "%.2f"|format(item.price) }} ₸</td>
+                                            <td>{{ "%.2f"|format(item.price - item.cost_price) }} ₸</td>
+                                            <td><small>{{ item.category_name }}</small></td>
+                                            <td><small>{{ item.supplier_name }}</small></td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -113,44 +324,123 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-// Sales Chart
-const ctx = document.getElementById('salesChart').getContext('2d');
-const salesData = {{ daily_sales|safe }};
+// Revenue vs Profit Chart
+const profitCtx = document.getElementById('profitChart').getContext('2d');
+const dailySalesData = {{ daily_sales|tojson|safe }};
 
-new Chart(ctx, {
+new Chart(profitCtx, {
     type: 'line',
     data: {
-        labels: [
-            {% for sale in daily_sales %}
-            '{{ sale.date.strftime("%d.%m") }}',
-            {% endfor %}
-        ],
+        labels: dailySalesData.map(sale => new Date(sale.date).toLocaleDateString('ru-RU')),
         datasets: [{
-            label: 'Сатулар (₸) / Продажи (₸)',
-            data: [
-                {% for sale in daily_sales %}
-                {{ sale.total or 0 }},
-                {% endfor %}
-            ],
+            label: 'Кіріс / Выручка (₸)',
+            data: dailySalesData.map(sale => sale.total_revenue || 0),
             borderColor: 'rgb(54, 162, 235)',
             backgroundColor: 'rgba(54, 162, 235, 0.1)',
-            tension: 0.1
+            tension: 0.1,
+            fill: false
+        }, {
+            label: 'Пайда / Прибыль (₸)',
+            data: dailySalesData.map(sale => sale.total_profit || 0),
+            borderColor: 'rgb(75, 192, 192)',
+            backgroundColor: 'rgba(75, 192, 192, 0.1)',
+            tension: 0.1,
+            fill: false
         }]
     },
     options: {
         responsive: true,
+        interaction: {
+            mode: 'index',
+            intersect: false,
+        },
         scales: {
             y: {
                 beginAtZero: true,
                 ticks: {
                     callback: function(value) {
-                        return value + ' ₸';
+                        return value.toLocaleString() + ' ₸';
+                    }
+                }
+            }
+        },
+        plugins: {
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' ₸';
                     }
                 }
             }
         }
     }
 });
+
+// Category Distribution Chart
+const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+const categoryData = {{ category_analysis|tojson|safe }};
+
+new Chart(categoryCtx, {
+    type: 'doughnut',
+    data: {
+        labels: categoryData.map(cat => cat.name),
+        datasets: [{
+            data: categoryData.map(cat => cat.total_revenue || 0),
+            backgroundColor: [
+                '#FF6384',
+                '#36A2EB',
+                '#FFCE56',
+                '#4BC0C0',
+                '#9966FF',
+                '#FF9F40',
+                '#FF6384',
+                '#C9CBCF'
+            ]
+        }]
+    },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: {
+                    boxWidth: 12,
+                    fontSize: 11
+                }
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                        const percentage = ((context.parsed * 100) / total).toFixed(1);
+                        return context.label + ': ' + context.parsed.toLocaleString() + ' ₸ (' + percentage + '%)';
+                    }
+                }
+            }
+        }
+    }
+});
+
+// Initialize DataTable for inventory if available
+if (typeof $.fn.DataTable !== 'undefined') {
+    $('#inventoryTable').DataTable({
+        pageLength: 25,
+        order: [[2, 'asc']], // Sort by stock quantity
+        language: {
+            search: "Іздеу / Поиск:",
+            lengthMenu: "Көрсету / Показать _MENU_ жазбалар",
+            info: "_START_ - _END_ of _TOTAL_ жазбалар",
+            paginate: {
+                first: "Алғашқы",
+                previous: "Артқа",
+                next: "Келесі", 
+                last: "Соңғы"
+            }
+        }
+    });
+}
 </script>
 {% endblock %}

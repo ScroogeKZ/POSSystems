@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}👥 Жаңа пайдаланушы / Новый пользователь{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-md-8 mx-auto">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h4><i class="fas fa-user-plus"></i> Жаңа пайдаланушы құру / Создать нового пользователя</h4>
+                </div>
+                <div class="card-body">
+                    {% with messages = get_flashed_messages(with_categories=true) %}
+                        {% if messages %}
+                            {% for category, message in messages %}
+                                <div class="alert alert-{{ 'danger' if category == 'error' else 'success' if category == 'success' else 'info' }} alert-dismissible fade show" role="alert">
+                                    {{ message }}
+                                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                                </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+
+                    <form method="POST">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    <label for="first_name" class="form-label">Аты / Имя *</label>
+                                    <input type="text" class="form-control" name="first_name" id="first_name" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    <label for="last_name" class="form-label">Тегі / Фамилия *</label>
+                                    <input type="text" class="form-control" name="last_name" id="last_name" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    <label for="username" class="form-label">Пайдаланушы атауы / Имя пользователя *</label>
+                                    <input type="text" class="form-control" name="username" id="username" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    <label for="email" class="form-label">Email *</label>
+                                    <input type="email" class="form-control" name="email" id="email" required>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    <label for="password" class="form-label">Құпия сөз / Пароль *</label>
+                                    <input type="password" class="form-control" name="password" id="password" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    <label for="role" class="form-label">Рөлі / Роль *</label>
+                                    <select class="form-control" name="role" id="role" required>
+                                        <option value="cashier">🧾 Кассир / Кассир</option>
+                                        <option value="manager">👨‍💼 Менеджер / Менеджер</option>
+                                        <option value="admin">👑 Админ / Администратор</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('users') }}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Артқа / Назад
+                            </a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-save"></i> Құру / Создать
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

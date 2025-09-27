@@ -2,13 +2,64 @@ import os
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session
 from config import Config
 from werkzeug.middleware.proxy_fix import ProxyFix
-from models import db, Product, Supplier, Category, Transaction, TransactionItem, Payment, PurchaseOrder, DiscountRule, PromoCode
-from models import PaymentMethod, TransactionStatus, UnitType
+from models import db, Product, Supplier, Category, Transaction, TransactionItem, Payment, PurchaseOrder, DiscountRule, PromoCode, User, OperationLog
+from models import PaymentMethod, TransactionStatus, UnitType, UserRole
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+import json
+from data_initialization import initialize_sample_data
 from datetime import datetime, timedelta
 from sqlalchemy import or_, desc, func, text, inspect
 from decimal import Decimal
 import secrets
 import string
+import io
+import pandas as pd
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib import colors
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from flask import send_file
+
+def create_default_admin_user():
+    """Create default admin user if none exists - requires ADMIN_PASSWORD env var"""
+    admin_user = User.query.filter_by(role=UserRole.ADMIN).first()
+    if not admin_user:
+        # Require ADMIN_PASSWORD environment variable for security
+        admin_password = os.environ.get('ADMIN_PASSWORD')
+        if not admin_password:
+            print("❌ SECURITY ERROR: ADMIN_PASSWORD environment variable is required to create admin user.")
+            print("   Set ADMIN_PASSWORD environment variable with a secure password (min 8 chars, mixed case, numbers, symbols)")
+            print("   Example: export ADMIN_PASSWORD='MySecureP@ssw0rd123'")
+            raise RuntimeError("Admin user creation requires ADMIN_PASSWORD environment variable for security")
+        
+        # Validate password strength (same rules as user registration)
+        if len(admin_password) < 8:
+            print("❌ SECURITY ERROR: ADMIN_PASSWORD must be at least 8 characters long")
+            raise RuntimeError("Admin password must be at least 8 characters for security")
+        
+        # Additional password complexity check (same as user registration)
+        has_upper = any(c.isupper() for c in admin_password)
+        has_lower = any(c.islower() for c in admin_password)
+        has_digit = any(c.isdigit() for c in admin_password)
+        
+        if not (has_upper and has_lower and has_digit):
+            print("❌ SECURITY ERROR: ADMIN_PASSWORD must contain uppercase letters, lowercase letters, and numbers")
+            print("   Example: MySecureP@ssw0rd123")
+            raise RuntimeError("Admin password must contain uppercase, lowercase, and numbers for security")
+        
+        admin = User(
+            username='admin',
+            email='admin@pos.kz',
+            first_name='Админ',
+            last_name='Жүйесі',
+            role=UserRole.ADMIN
+        )
+        admin.set_password(admin_password)
+        db.session.add(admin)
+        db.session.commit()
+        
+        print(f"✅ SECURE: Admin user created with password from ADMIN_PASSWORD environment variable")
 
 def create_app():
     app = Flask(__name__)
@@ -20,6 +71,16 @@ def create_app():
     # Initialize extensions
     db.init_app(app)
     
+    # Initialize Flask-Login
+    login_manager = LoginManager()
+    login_manager.init_app(app)
+    login_manager.login_view = 'login'
+    login_manager.login_message = 'Жүйеге кіру қажет / Необходимо войти в систему'
+    
+    @login_manager.user_loader
+    def load_user(user_id):
+        return User.query.get(int(user_id))
+    
     # Ensure upload directory exists
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     
@@ -29,6 +90,109 @@ def create_app():
         
         # Check schema compatibility for promo code features
         check_promo_schema_compatibility(app)
+        
+        # Initialize bcrypt for the app context
+        from models import bcrypt
+        bcrypt.init_app(app)
+        
+        # Create default admin user if none exists
+        create_default_admin_user()
+    
+    # Authentication routes
+    @app.route('/login', methods=['GET', 'POST'])
+    def login():
+        if current_user.is_authenticated:
+            return redirect(url_for('index'))
+        
+        if request.method == 'POST':
+            username = request.form.get('username')
+            password = request.form.get('password')
+            
+            user = User.query.filter_by(username=username).first()
+            
+            if user and user.check_password(password) and user.is_active:
+                login_user(user)
+                user.last_login = datetime.utcnow()
+                db.session.commit()
+                
+                log_operation('login', f'User logged in: {user.username}')
+                
+                next_page = request.args.get('next')
+                flash(f'Сәлем, {user.first_name}! / Добро пожаловать, {user.first_name}!', 'success')
+                return redirect(next_page) if next_page else redirect(url_for('index'))
+            else:
+                flash('Қате логин немесе құпия сөз / Неверный логин или пароль', 'error')
+        
+        return render_template('auth/login.html')
+    
+    @app.route('/logout')
+    @login_required
+    def logout():
+        log_operation('logout', f'User logged out: {current_user.username}')
+        logout_user()
+        flash('Сіз жүйеден шықтыңыз / Вы вышли из системы', 'info')
+        return redirect(url_for('login'))
+    
+    @app.route('/register', methods=['GET', 'POST'])
+    @login_required
+    @require_role(UserRole.ADMIN)
+    def register():
+        if request.method == 'POST':
+            username = request.form.get('username')
+            email = request.form.get('email')
+            password = request.form.get('password')
+            first_name = request.form.get('first_name')
+            last_name = request.form.get('last_name')
+            role = request.form.get('role')
+            
+            # Validate password strength
+            if not password or len(password) < 8:
+                flash('Құпия сөз кемінде 8 таңбадан тұруы керек / Пароль должен содержать минимум 8 символов', 'error')
+                return render_template('auth/register.html')
+            
+            # Additional password complexity check
+            has_upper = any(c.isupper() for c in password)
+            has_lower = any(c.islower() for c in password)
+            has_digit = any(c.isdigit() for c in password)
+            
+            if not (has_upper and has_lower and has_digit):
+                flash('Құпия сөзде үлкен әріп, кіші әріп және сан болуы керек / Пароль должен содержать заглавные буквы, строчные буквы и цифры', 'error')
+                return render_template('auth/register.html')
+            
+            # Check if user already exists
+            if User.query.filter_by(username=username).first():
+                flash('Мұндай пайдаланушы бар / Пользователь уже существует', 'error')
+                return render_template('auth/register.html')
+            
+            if User.query.filter_by(email=email).first():
+                flash('Мұндай email бар / Email уже зарегистрирован', 'error')
+                return render_template('auth/register.html')
+            
+            # Create new user
+            new_user = User(
+                username=username,
+                email=email,
+                first_name=first_name,
+                last_name=last_name,
+                role=UserRole(role)
+            )
+            new_user.set_password(password)
+            
+            db.session.add(new_user)
+            db.session.commit()
+            
+            log_operation('user_create', f'New user created: {username}', 'user', new_user.id)
+            flash(f'Пайдаланушы құрылды / Пользователь {username} создан', 'success')
+            return redirect(url_for('users'))
+        
+        return render_template('auth/register.html')
+    
+    @app.route('/users')
+    @login_required
+    @require_role(UserRole.MANAGER)
+    def users():
+        users = User.query.all()
+        return render_template('auth/users.html', users=users)
     
     return app
 
@@ -61,6 +225,43 @@ def check_promo_schema_compatibility(app):
         print(f"WARNING: Could not check promo_codes table: {e}")
         app.config['PROMO_CODES_TABLE_EXISTS'] = False
 
+def log_operation(action, description=None, entity_type=None, entity_id=None, old_values=None, new_values=None):
+    """Log user operations for audit trail"""
+    if current_user.is_authenticated:
+        try:
+            log_entry = OperationLog(
+                action=action,
+                description=description,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                old_values=json.dumps(old_values) if old_values else None,
+                new_values=json.dumps(new_values) if new_values else None,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent'),
+                user_id=current_user.id
+            )
+            db.session.add(log_entry)
+            db.session.commit()
+        except Exception as e:
+            print(f"Failed to log operation: {e}")
+
+def require_role(required_role):
+    """Decorator to require specific user role"""
+    def decorator(f):
+        def decorated_function(*args, **kwargs):
+            if not current_user.is_authenticated:
+                flash('Жүйеге кіру қажет / Необходимо войти в систему', 'error')
+                return redirect(url_for('login'))
+            
+            if not current_user.can_access(required_role):
+                flash('Бұл әрекетке рұқсат жоқ / Недостаточно прав доступа', 'error')
+                return redirect(url_for('index'))
+            
+            return f(*args, **kwargs)
+        decorated_function.__name__ = f.__name__
+        return decorated_function
+    return decorator
+
 def generate_transaction_number():
     """Generate unique transaction number"""
     timestamp = datetime.now().strftime('%Y%m%d')
@@ -73,102 +274,6 @@ def generate_order_number():
     random_part = ''.join(secrets.choice(string.digits) for _ in range(4))
     return f"PO{timestamp}{random_part}"
 
-def initialize_sample_data():
-    """Initialize database with sample data if empty"""
-    if Category.query.count() == 0:
-        # Create categories for Kazakhstan market
-        category1 = Category(name="Сүт өнімдері", description="Сүт, ірімшік, йогурт")
-        category2 = Category(name="Нан өнімдері", description="Нан, тоқаш, печенье")
-        category3 = Category(name="Сусындар", description="Шырын, газдалған сусындар, су")
-        category4 = Category(name="Ет өнімдері", description="Ет, шұжық, деликатестер")
-        category5 = Category(name="Жемістер мен көкөністер", description="Жаңа жемістер мен көкөністер")
-        
-        categories = [category1, category2, category3, category4, category5]
-        
-        for category in categories:
-            db.session.add(category)
-        
-        # Create Kazakhstan supplier
-        supplier = Supplier(
-            name="ЖШС АлматыТрейд",
-            contact_person="Асылбек Нұрболов", 
-            phone="+7 (727) 250-30-40",
-            email="orders@almatytrade.kz",
-            address="Алматы қ., Абай д-лы, 120, 050000"
-        )
-        db.session.add(supplier)
-        
-        db.session.commit()
-        
-        # Create sample products for Kazakhstan market
-        product1 = Product(sku="MLK001", name="Сүт 3.2% 1л", price=320.00, cost_price=220.00, 
-                           stock_quantity=50, min_stock_level=10, unit_type=UnitType.PIECE,
-                           supplier=supplier, category=categories[0])
-        product2 = Product(sku="BRD001", name="Нан ақ", price=180.00, cost_price=120.00,
-                           stock_quantity=30, min_stock_level=5, unit_type=UnitType.PIECE,
-                           supplier=supplier, category=categories[1])
-        product3 = Product(sku="JCE001", name="Апельсин шырыны 1л", price=580.00, cost_price=410.00,
-                           stock_quantity=25, min_stock_level=8, unit_type=UnitType.PIECE,
-                           supplier=supplier, category=categories[2])
-        product4 = Product(sku="CHE001", name="Ірімшік қазақстандық", price=2200.00, cost_price=1560.00,
-                           stock_quantity=15, min_stock_level=3, unit_type=UnitType.KILOGRAM,
-                           supplier=supplier, category=categories[0])
-        product5 = Product(sku="APL001", name="Алма қызыл", price=890.00, cost_price=590.00,
-                           stock_quantity=40, min_stock_level=10, unit_type=UnitType.KILOGRAM,
-                           supplier=supplier, category=categories[4])
-        
-        products = [product1, product2, product3, product4, product5]
-        
-        for product in products:
-            db.session.add(product)
-        
-        db.session.commit()
-        
-        # Create sample promo codes for testing
-        if PromoCode.query.count() == 0:
-            promo1 = PromoCode(
-                code="SAVE10", 
-                name="10% скидка", 
-                description="Скидка 10% на любую покупку",
-                discount_type="percentage", 
-                discount_value=10.00, 
-                min_amount=500.00, 
-                max_uses=100, 
-                current_uses=0, 
-                is_active=True
-            )
-            
-            promo2 = PromoCode(
-                code="NEWCUSTOMER", 
-                name="Скидка новому клиенту", 
-                description="200₸ скидка для новых клиентов",
-                discount_type="fixed_amount", 
-                discount_value=200.00, 
-                min_amount=1000.00, 
-                max_uses=50, 
-                current_uses=0, 
-                is_active=True
-            )
-            
-            promo3 = PromoCode(
-                code="WEEKEND", 
-                name="Выходная скидка", 
-                description="15% скидка на выходные",
-                discount_type="percentage", 
-                discount_value=15.00, 
-                min_amount=300.00, 
-                max_uses=None,  # Unlimited
-                current_uses=0, 
-                is_active=True,
-                start_date=datetime.utcnow(),
-                end_date=datetime.utcnow() + timedelta(days=30)
-            )
-            
-            promos = [promo1, promo2, promo3]
-            for promo in promos:
-                db.session.add(promo)
-            
-            db.session.commit()
 
 # Create the Flask app
 app = create_app()
@@ -231,6 +336,7 @@ def inject_language_functions():
 
 # Routes
 @app.route('/')
+@login_required
 def index():
     """Main dashboard"""
     # Get quick stats for dashboard
@@ -255,6 +361,7 @@ def index():
                          recent_transactions=recent_transactions)
 
 @app.route('/pos')
+@login_required
 def pos():
     """POS Terminal Interface"""
     categories = Category.query.all()
@@ -264,6 +371,7 @@ def pos():
     return render_template('pos.html', categories=categories)
 
 @app.route('/api/products/search')
+@login_required
 def search_products():
     """API endpoint for live product search"""
     query = request.args.get('q', '').strip()
@@ -299,6 +407,7 @@ def search_products():
     } for p in products])
 
 @app.route('/inventory')
+@login_required
 def inventory():
     """Inventory management page"""
     search = request.args.get('search', '')
@@ -341,46 +450,436 @@ def inventory():
                          show_low_stock=low_stock)
 
 @app.route('/reports')
+@login_required
 def reports():
-    """Reports and analytics page"""
+    """Enhanced reports and analytics page"""
     # Date range filter
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
+    report_type = request.args.get('type', 'overview')  # overview, profit, categories, inventory
     
     if not start_date:
         start_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
     if not end_date:
         end_date = datetime.now().strftime('%Y-%m-%d')
     
-    # Sales by day
+    # Sales by day with profit calculation
     daily_sales = db.session.query(
         func.date(Transaction.created_at).label('date'),
-        func.sum(Transaction.total_amount).label('total')
+        func.sum(Transaction.total_amount).label('total_revenue'),
+        func.sum(
+            TransactionItem.quantity * (Product.price - Product.cost_price)
+        ).label('total_profit')
+    ).select_from(Transaction).join(
+        TransactionItem, Transaction.id == TransactionItem.transaction_id
+    ).join(
+        Product, TransactionItem.product_id == Product.id
     ).filter(
         Transaction.status == TransactionStatus.COMPLETED,
         func.date(Transaction.created_at) >= start_date,
         func.date(Transaction.created_at) <= end_date
     ).group_by(func.date(Transaction.created_at)).all()
     
-    # Top selling products
+    # Monthly aggregation for longer periods (database-agnostic using extract)
+    monthly_sales = db.session.query(
+        func.concat(
+            func.extract('year', Transaction.created_at), 
+            '-', 
+            func.lpad(func.extract('month', Transaction.created_at).cast(db.String), 2, '0')
+        ).label('month'),
+        func.sum(Transaction.total_amount).label('total_revenue'),
+        func.sum(
+            TransactionItem.quantity * (Product.price - Product.cost_price)
+        ).label('total_profit')
+    ).select_from(Transaction).join(
+        TransactionItem, Transaction.id == TransactionItem.transaction_id
+    ).join(
+        Product, TransactionItem.product_id == Product.id
+    ).filter(
+        Transaction.status == TransactionStatus.COMPLETED,
+        func.date(Transaction.created_at) >= start_date,
+        func.date(Transaction.created_at) <= end_date
+    ).group_by(
+        func.extract('year', Transaction.created_at),
+        func.extract('month', Transaction.created_at)
+    ).all()
+    
+    # Top selling products with profit
     top_products = db.session.query(
         Product.name,
         func.sum(TransactionItem.quantity).label('total_sold'),
-        func.sum(TransactionItem.total_price).label('total_revenue')
-    ).join(TransactionItem).join(Transaction).filter(
+        func.sum(TransactionItem.total_price).label('total_revenue'),
+        func.sum(
+            TransactionItem.quantity * (Product.price - Product.cost_price)
+        ).label('total_profit'),
+        func.avg(Product.price - Product.cost_price).label('avg_profit_per_unit')
+    ).select_from(Product).join(
+        TransactionItem, Product.id == TransactionItem.product_id
+    ).join(
+        Transaction, TransactionItem.transaction_id == Transaction.id
+    ).filter(
         Transaction.status == TransactionStatus.COMPLETED,
         func.date(Transaction.created_at) >= start_date,
         func.date(Transaction.created_at) <= end_date
     ).group_by(Product.id, Product.name).order_by(desc('total_sold')).limit(10).all()
     
+    # Category analysis - most popular categories
+    category_analysis = db.session.query(
+        Category.name,
+        func.count(TransactionItem.id).label('total_transactions'),
+        func.sum(TransactionItem.quantity).label('total_sold'),
+        func.sum(TransactionItem.total_price).label('total_revenue'),
+        func.sum(
+            TransactionItem.quantity * (Product.price - Product.cost_price)
+        ).label('total_profit')
+    ).select_from(Category).join(
+        Product, Category.id == Product.category_id
+    ).join(
+        TransactionItem, Product.id == TransactionItem.product_id
+    ).join(
+        Transaction, TransactionItem.transaction_id == Transaction.id
+    ).filter(
+        Transaction.status == TransactionStatus.COMPLETED,
+        func.date(Transaction.created_at) >= start_date,
+        func.date(Transaction.created_at) <= end_date
+    ).group_by(Category.id, Category.name).order_by(desc('total_revenue')).all()
+    
+    # Inventory analysis
+    inventory_report = db.session.query(
+        Product.name,
+        Product.sku,
+        Product.stock_quantity,
+        Product.min_stock_level,
+        Product.price,
+        Product.cost_price,
+        Category.name.label('category_name'),
+        Supplier.name.label('supplier_name')
+    ).select_from(Product).join(
+        Category, Product.category_id == Category.id
+    ).join(
+        Supplier, Product.supplier_id == Supplier.id
+    ).filter(
+        Product.is_active == True
+    ).order_by(Product.stock_quantity.asc()).all()
+    
+    # Low stock items
+    low_stock_items = [item for item in inventory_report if item.stock_quantity <= item.min_stock_level]
+    
+    # Calculate key metrics
+    total_revenue = sum(sale.total_revenue or 0 for sale in daily_sales)
+    total_profit = sum(sale.total_profit or 0 for sale in daily_sales)
+    profit_margin = (total_profit / total_revenue * 100) if total_revenue > 0 else 0
+    
     return render_template('reports.html',
                          daily_sales=daily_sales,
+                         monthly_sales=monthly_sales,
                          top_products=top_products,
+                         category_analysis=category_analysis,
+                         inventory_report=inventory_report,
+                         low_stock_items=low_stock_items,
+                         total_revenue=total_revenue,
+                         total_profit=total_profit,
+                         profit_margin=profit_margin,
                          start_date=start_date,
-                         end_date=end_date)
+                         end_date=end_date,
+                         report_type=report_type)
+
+@app.route('/export/pdf')
+@login_required
+def export_pdf():
+    """Export reports as PDF"""
+    try:
+        # Get the same data as reports route
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        if not end_date:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        
+        # Get analytics data
+        daily_sales, category_analysis, top_products, inventory_report = get_reports_data(start_date, end_date)
+        
+        # Create PDF
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        styles = getSampleStyleSheet()
+        story = []
+        
+        # Title
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=18,
+            spaceAfter=30,
+            alignment=1  # Center
+        )
+        story.append(Paragraph(f'POS System Analytics Report', title_style))
+        story.append(Paragraph(f'Period: {start_date} to {end_date}', styles['Normal']))
+        story.append(Spacer(1, 20))
+        
+        # Daily Sales Table
+        if daily_sales:
+            story.append(Paragraph('Daily Sales and Profit', styles['Heading2']))
+            sales_data = [['Date', 'Revenue (₸)', 'Profit (₸)']]
+            for sale in daily_sales:
+                sales_data.append([
+                    str(sale.date),
+                    f"{sale.total_revenue or 0:.2f}",
+                    f"{sale.total_profit or 0:.2f}"
+                ])
+            
+            sales_table = Table(sales_data)
+            sales_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 14),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(sales_table)
+            story.append(Spacer(1, 20))
+        
+        # Top Products Table
+        if top_products:
+            story.append(Paragraph('Top Selling Products', styles['Heading2']))
+            products_data = [['Product', 'Sold', 'Revenue (₸)', 'Profit (₸)']]
+            for product in top_products:
+                products_data.append([
+                    product.name,
+                    f"{product.total_sold:.0f}",
+                    f"{product.total_revenue:.2f}",
+                    f"{product.total_profit or 0:.2f}"
+                ])
+            
+            products_table = Table(products_data)
+            products_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(products_table)
+            story.append(Spacer(1, 20))
+        
+        # Category Analysis Table
+        if category_analysis:
+            story.append(Paragraph('Category Analysis', styles['Heading2']))
+            category_data = [['Category', 'Transactions', 'Revenue (₸)', 'Profit (₸)']]
+            for category in category_analysis:
+                category_data.append([
+                    category.name,
+                    str(category.total_transactions),
+                    f"{category.total_revenue:.2f}",
+                    f"{category.total_profit or 0:.2f}"
+                ])
+            
+            category_table = Table(category_data)
+            category_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, 0), 12),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(category_table)
+        
+        # Build PDF
+        doc.build(story)
+        buffer.seek(0)
+        
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f'pos_report_{start_date}_{end_date}.pdf',
+            mimetype='application/pdf'
+        )
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/export/excel')
+@login_required
+def export_excel():
+    """Export reports as Excel"""
+    try:
+        # Get the same data as reports route
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        if not start_date:
+            start_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        if not end_date:
+            end_date = datetime.now().strftime('%Y-%m-%d')
+        
+        # Get analytics data
+        daily_sales, category_analysis, top_products, inventory_report = get_reports_data(start_date, end_date)
+        
+        # Create Excel file
+        buffer = io.BytesIO()
+        
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            # Daily Sales Sheet
+            if daily_sales:
+                sales_df = pd.DataFrame([
+                    {
+                        'Date': sale.date,
+                        'Revenue (₸)': sale.total_revenue or 0,
+                        'Profit (₸)': sale.total_profit or 0
+                    } for sale in daily_sales
+                ])
+                sales_df.to_excel(writer, sheet_name='Daily Sales', index=False)
+            
+            # Top Products Sheet
+            if top_products:
+                products_df = pd.DataFrame([
+                    {
+                        'Product': product.name,
+                        'Quantity Sold': product.total_sold,
+                        'Revenue (₸)': product.total_revenue,
+                        'Profit (₸)': product.total_profit or 0,
+                        'Avg Profit per Unit (₸)': product.avg_profit_per_unit or 0
+                    } for product in top_products
+                ])
+                products_df.to_excel(writer, sheet_name='Top Products', index=False)
+            
+            # Category Analysis Sheet
+            if category_analysis:
+                categories_df = pd.DataFrame([
+                    {
+                        'Category': category.name,
+                        'Total Transactions': category.total_transactions,
+                        'Total Sold': category.total_sold,
+                        'Revenue (₸)': category.total_revenue,
+                        'Profit (₸)': category.total_profit or 0,
+                        'Profit Margin (%)': (category.total_profit / category.total_revenue * 100) if category.total_revenue > 0 else 0
+                    } for category in category_analysis
+                ])
+                categories_df.to_excel(writer, sheet_name='Category Analysis', index=False)
+            
+            # Inventory Report Sheet
+            if inventory_report:
+                inventory_df = pd.DataFrame([
+                    {
+                        'Product': item.name,
+                        'SKU': item.sku,
+                        'Stock Quantity': item.stock_quantity,
+                        'Min Stock Level': item.min_stock_level,
+                        'Price (₸)': item.price,
+                        'Cost Price (₸)': item.cost_price,
+                        'Profit per Unit (₸)': item.price - item.cost_price,
+                        'Category': item.category_name,
+                        'Supplier': item.supplier_name,
+                        'Status': 'Low Stock' if item.stock_quantity <= item.min_stock_level else 'OK'
+                    } for item in inventory_report
+                ])
+                inventory_df.to_excel(writer, sheet_name='Inventory Report', index=False)
+        
+        buffer.seek(0)
+        
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f'pos_report_{start_date}_{end_date}.xlsx',
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+def get_reports_data(start_date, end_date):
+    """Helper function to get reports data"""
+    # Sales by day with profit calculation
+    daily_sales = db.session.query(
+        func.date(Transaction.created_at).label('date'),
+        func.sum(Transaction.total_amount).label('total_revenue'),
+        func.sum(
+            TransactionItem.quantity * (Product.price - Product.cost_price)
+        ).label('total_profit')
+    ).select_from(Transaction).join(
+        TransactionItem, Transaction.id == TransactionItem.transaction_id
+    ).join(
+        Product, TransactionItem.product_id == Product.id
+    ).filter(
+        Transaction.status == TransactionStatus.COMPLETED,
+        func.date(Transaction.created_at) >= start_date,
+        func.date(Transaction.created_at) <= end_date
+    ).group_by(func.date(Transaction.created_at)).all()
+    
+    # Top selling products with profit
+    top_products = db.session.query(
+        Product.name,
+        func.sum(TransactionItem.quantity).label('total_sold'),
+        func.sum(TransactionItem.total_price).label('total_revenue'),
+        func.sum(
+            TransactionItem.quantity * (Product.price - Product.cost_price)
+        ).label('total_profit'),
+        func.avg(Product.price - Product.cost_price).label('avg_profit_per_unit')
+    ).select_from(Product).join(
+        TransactionItem, Product.id == TransactionItem.product_id
+    ).join(
+        Transaction, TransactionItem.transaction_id == Transaction.id
+    ).filter(
+        Transaction.status == TransactionStatus.COMPLETED,
+        func.date(Transaction.created_at) >= start_date,
+        func.date(Transaction.created_at) <= end_date
+    ).group_by(Product.id, Product.name).order_by(desc('total_sold')).limit(10).all()
+    
+    # Category analysis - most popular categories
+    category_analysis = db.session.query(
+        Category.name,
+        func.count(TransactionItem.id).label('total_transactions'),
+        func.sum(TransactionItem.quantity).label('total_sold'),
+        func.sum(TransactionItem.total_price).label('total_revenue'),
+        func.sum(
+            TransactionItem.quantity * (Product.price - Product.cost_price)
+        ).label('total_profit')
+    ).select_from(Category).join(
+        Product, Category.id == Product.category_id
+    ).join(
+        TransactionItem, Product.id == TransactionItem.product_id
+    ).join(
+        Transaction, TransactionItem.transaction_id == Transaction.id
+    ).filter(
+        Transaction.status == TransactionStatus.COMPLETED,
+        func.date(Transaction.created_at) >= start_date,
+        func.date(Transaction.created_at) <= end_date
+    ).group_by(Category.id, Category.name).order_by(desc('total_revenue')).all()
+    
+    # Inventory analysis
+    inventory_report = db.session.query(
+        Product.name,
+        Product.sku,
+        Product.stock_quantity,
+        Product.min_stock_level,
+        Product.price,
+        Product.cost_price,
+        Category.name.label('category_name'),
+        Supplier.name.label('supplier_name')
+    ).select_from(Product).join(
+        Category, Product.category_id == Category.id
+    ).join(
+        Supplier, Product.supplier_id == Supplier.id
+    ).filter(
+        Product.is_active == True
+    ).order_by(Product.stock_quantity.asc()).all()
+    
+    return daily_sales, category_analysis, top_products, inventory_report
 
 # API Routes for POS functionality
 @app.route('/api/transaction/start', methods=['POST'])
+@login_required
 def start_transaction():
     """Start a new transaction"""
     try:
@@ -388,7 +887,7 @@ def start_transaction():
         cashier_name = data.get('cashier_name', 'Кассир')
         customer_name = data.get('customer_name', '')
         
-        transaction = Transaction(
+        transaction = Transaction(  # type: ignore
             transaction_number=generate_transaction_number(),
             status=TransactionStatus.PENDING,
             cashier_name=cashier_name,
@@ -438,7 +937,7 @@ def add_item_to_transaction():
             return jsonify({'success': False, 'error': 'Недостаточно товара на складе'}), 400
         
         # Create new item
-        item = TransactionItem(
+        item = TransactionItem(  # type: ignore
             transaction_id=transaction_id,
             product_id=product.id,
             quantity=quantity,
@@ -469,6 +968,7 @@ def add_item_to_transaction():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/transaction/current')
+@login_required
 def get_current_transaction():
     """Get current transaction details"""
     transaction_id = session.get('current_transaction_id')
@@ -530,7 +1030,7 @@ def complete_transaction():
         
         # Create payment records
         for payment_data in payments:
-            payment = Payment(
+            payment = Payment(  # type: ignore
                 transaction_id=transaction.id,
                 method=PaymentMethod(payment_data['method']),
                 amount=Decimal(str(payment_data['amount'])),
@@ -561,8 +1061,35 @@ def complete_transaction():
         # Complete transaction
         transaction.status = TransactionStatus.COMPLETED
         transaction.completed_at = datetime.utcnow()
+        transaction.user_id = current_user.id if current_user.is_authenticated else None
         
         db.session.commit()
+        
+        # Log the completed sale
+        log_operation(
+            'sale_completed',
+            f'Transaction {transaction.transaction_number} completed for ₸{transaction.total_amount}',
+            'transaction',
+            transaction.id,
+            None,
+            {
+                'transaction_number': transaction.transaction_number,
+                'total_amount': float(transaction.total_amount),
+                'items_count': len(transaction.items),
+                'payment_methods': [p['method'] for p in payments]
+            }
+        )
+        
+        # Log inventory updates
+        for item in transaction.items:
+            log_operation(
+                'inventory_update',
+                f'Stock reduced for {item.product.name}: -{int(item.quantity)} units',
+                'product',
+                item.product.id,
+                {'stock_quantity': item.product.stock_quantity + int(item.quantity)},
+                {'stock_quantity': item.product.stock_quantity}
+            )
         
         # Clear current transaction from session
         session.pop('current_transaction_id', None)
@@ -656,7 +1183,7 @@ def create_product():
         if existing_product:
             return jsonify({'success': False, 'error': 'Товар с таким артикулом уже существует'}), 400
         
-        product = Product(
+        product = Product(  # type: ignore
             sku=data['sku'],
             name=data['name'],
             description=data.get('description', ''),
@@ -765,7 +1292,7 @@ def create_category():
     try:
         data = request.get_json() or {}
         
-        category = Category(
+        category = Category(  # type: ignore
             name=data['name'],
             description=data.get('description', '')
         )
@@ -789,7 +1316,7 @@ def create_supplier():
     try:
         data = request.get_json() or {}
         
-        supplier = Supplier(
+        supplier = Supplier(  # type: ignore
             name=data['name'],
             contact_person=data.get('contact_person', ''),
             phone=data.get('phone', ''),
