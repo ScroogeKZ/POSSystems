@@ -5,6 +5,7 @@ class Config:
     SECRET_KEY = os.environ.get('SESSION_SECRET')
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    DEBUG = os.environ.get('FLASK_ENV') != 'production'
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_recycle": 300,
         "pool_pre_ping": True,

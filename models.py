@@ -41,7 +41,7 @@ class User(UserMixin, db.Model):
     first_name = db.Column(db.String(50), nullable=False)
     last_name = db.Column(db.String(50), nullable=False)
     role = db.Column(db.Enum(UserRole), default=UserRole.CASHIER)
-    is_active = db.Column(db.Boolean, default=True)
+    _is_active = db.Column('is_active', db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_login = db.Column(db.DateTime)
     
@@ -73,6 +73,11 @@ class User(UserMixin, db.Model):
     @property
     def is_admin(self):
         return self.role == UserRole.ADMIN
+    
+    @property
+    def is_active(self):
+        """Override UserMixin.is_active"""
+        return self._is_active
     
     def can_access(self, required_role):
         """Check if user has required role or higher"""

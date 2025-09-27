@@ -11,44 +11,6 @@ from utils.helpers import log_operation, require_role
 auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 
 
-def create_default_admin_user():
-    """Create default admin user if none exists - requires ADMIN_PASSWORD env var"""
-    admin_user = User.query.filter_by(role=UserRole.ADMIN).first()
-    if not admin_user:
-        # Require ADMIN_PASSWORD environment variable for security
-        admin_password = os.environ.get('ADMIN_PASSWORD')
-        if not admin_password:
-            print("❌ SECURITY ERROR: ADMIN_PASSWORD environment variable is required to create admin user.")
-            print("   Set ADMIN_PASSWORD environment variable with a secure password (min 8 chars, mixed case, numbers, symbols)")
-            print("   Example: export ADMIN_PASSWORD='MySecureP@ssw0rd123'")
-            raise RuntimeError("Admin user creation requires ADMIN_PASSWORD environment variable for security")
-        
-        # Validate password strength (same rules as user registration)
-        if len(admin_password) < 8:
-            print("❌ SECURITY ERROR: ADMIN_PASSWORD must be at least 8 characters long")
-            raise RuntimeError("Admin password must be at least 8 characters for security")
-        
-        # Additional password complexity check (same as user registration)
-        has_upper = any(c.isupper() for c in admin_password)
-        has_lower = any(c.islower() for c in admin_password)
-        has_digit = any(c.isdigit() for c in admin_password)
-        
-        if not (has_upper and has_lower and has_digit):
-            print("❌ SECURITY ERROR: ADMIN_PASSWORD must contain uppercase letters, lowercase letters, and numbers")
-            print("   Example: MySecureP@ssw0rd123")
-            raise RuntimeError("Admin password must contain uppercase, lowercase, and numbers for security")
-        
-        admin = User()
-        admin.username = 'admin'
-        admin.email = 'admin@pos.kz'
-        admin.first_name = 'Админ'
-        admin.last_name = 'Жүйесі'
-        admin.role = UserRole.ADMIN
-        admin.set_password(admin_password)
-        db.session.add(admin)
-        db.session.commit()
-        
-        print(f"✅ SECURE: Admin user created with password from ADMIN_PASSWORD environment variable")
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])

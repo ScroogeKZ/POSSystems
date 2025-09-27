@@ -4,6 +4,22 @@
 This is a Point of Sale (POS) system designed specifically for the Kazakhstan market, featuring bilingual support (Kazakh/Russian). The system provides comprehensive retail management functionality including sales processing, inventory management, and reporting.
 
 ## Recent Changes (September 27, 2025)
+### Security Improvements ✅
+- **ADMIN_PASSWORD Security**: Moved admin password from workflow command to secure Replit Secrets
+- **Production Debug Mode**: Disabled debug mode for production environment (FLASK_ENV=production)
+- **Template Security**: Fixed URL routing issues that could expose internal endpoints
+
+### Code Quality & Architecture Improvements ✅  
+- **Eliminated Code Duplication**: Consolidated duplicated functions across modules:
+  - `create_default_admin_user` - removed from views/auth.py, kept in app.py
+  - `require_role` decorator - consolidated in utils/helpers.py
+  - `log_operation` - unified version in utils/helpers.py with proper error handling
+  - Language functions (`get_language`, `translate_name`) - centralized in utils/language.py
+  - `generate_transaction_number` - single implementation in utils/helpers.py
+- **Better Import Structure**: Cleaned up imports and dependencies between modules
+- **Configuration Management**: Improved debug mode configuration through environment variables
+
+### Previous Mobile Optimizations
 - **Mobile Optimization Complete**: Implemented comprehensive mobile and tablet optimizations for Kazakhstan market
 - **Tablet-Optimized POS Interface**: Added responsive design with Bootstrap breakpoints and touch-friendly controls
 - **Barcode Scanner Integration**: Added QuaggaJS-based barcode scanning with camera access and product search API

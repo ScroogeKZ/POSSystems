@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, jsonify, send_file, sessi
 from flask_login import login_required, current_user
 from models import db, Product, Supplier, Category, Transaction, TransactionItem, Payment, User
 from models import PaymentMethod, TransactionStatus, UnitType, UserRole
+from utils.helpers import require_role
 from datetime import datetime, timedelta
 from sqlalchemy import desc, func
 import io
@@ -14,22 +15,6 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 reports_bp = Blueprint('reports', __name__)
 
-def require_role(required_role):
-    """Decorator to require specific user role"""
-    def decorator(f):
-        def decorated_function(*args, **kwargs):
-            if not current_user.is_authenticated:
-                flash('Жүйеге кіру қажет / Необходимо войти в систему', 'error')
-                return redirect(url_for('login'))
-            
-            if not current_user.can_access(required_role):
-                flash('Бұл әрекетке рұқсат жоқ / Недостаточно прав доступа', 'error')
-                return redirect(url_for('index'))
-            
-            return f(*args, **kwargs)
-        decorated_function.__name__ = f.__name__
-        return decorated_function
-    return decorator
 
 @reports_bp.route('/reports')
 @login_required

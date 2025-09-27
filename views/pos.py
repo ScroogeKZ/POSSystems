@@ -2,6 +2,8 @@ from flask import Blueprint, render_template, request, jsonify, session, current
 from flask_login import login_required, current_user
 from models import db, Product, Category, Transaction, TransactionItem, Payment, PromoCode, OperationLog
 from models import PaymentMethod, TransactionStatus, UnitType, UserRole
+from utils.helpers import log_operation, generate_transaction_number
+from utils.language import get_language, translate_name
 from sqlalchemy import or_, desc, func
 from decimal import Decimal
 from datetime import datetime, timedelta
@@ -13,66 +15,8 @@ import string
 pos_bp = Blueprint('pos', __name__)
 
 # Helper functions
-def generate_transaction_number():
-    """Generate unique transaction number"""
-    timestamp = datetime.now().strftime('%Y%m%d')
-    random_part = ''.join(secrets.choice(string.digits) for _ in range(4))
-    return f"TXN{timestamp}{random_part}"
 
-def log_operation(action, description=None, entity_type=None, entity_id=None, old_values=None, new_values=None):
-    """Log user operations for audit trail"""
-    if current_user.is_authenticated:
-        try:
-            log_entry = OperationLog()
-            log_entry.action = action
-            log_entry.description = description
-            log_entry.entity_type = entity_type
-            log_entry.entity_id = entity_id
-            log_entry.old_values = json.dumps(old_values) if old_values else None
-            log_entry.new_values = json.dumps(new_values) if new_values else None
-            log_entry.ip_address = request.remote_addr
-            log_entry.user_agent = request.headers.get('User-Agent')
-            log_entry.user_id = current_user.id
-            db.session.add(log_entry)
-            db.session.commit()
-        except Exception as e:
-            print(f"Failed to log operation: {e}")
 
-def get_language():
-    """Get current language from session"""
-    return session.get('language', 'kk')  # Default to Kazakh
-
-def translate_name(original_name, category='products'):
-    """Translate product/category name based on current language"""
-    # Translation dictionaries
-    TRANSLATIONS = {
-        'categories': {
-            'Сүт өнімдері': {'kk': 'Сүт өнімдері', 'ru': 'Молочные продукты'},
-            'Нан өнімдері': {'kk': 'Нан өнімдері', 'ru': 'Хлебобулочные'},
-            'Сусындар': {'kk': 'Сусындар', 'ru': 'Напитки'},
-            'Ет өнімдері': {'kk': 'Ет өнімдері', 'ru': 'Мясные продукты'},
-            'Жемістер мен көкөністер': {'kk': 'Жемістер мен көкөністер', 'ru': 'Фрукты и овощи'},
-        },
-        'products': {
-            'Сүт 3.2% 1л': {'kk': 'Сүт 3.2% 1л', 'ru': 'Молоко 3.2% 1л'},
-            'Нан ақ': {'kk': 'Нан ақ', 'ru': 'Хлеб белый'},
-            'Апельсин шырыны 1л': {'kk': 'Апельсин шырыны 1л', 'ru': 'Сок апельсиновый 1л'},
-            'Ірімшік қазақстандық': {'kk': 'Ірімшік қазақстандық', 'ru': 'Сыр казахстанский'},
-            'Алма қызыл': {'kk': 'Алма қызыл', 'ru': 'Яблоки красные'},
-        },
-        'units': {
-            'шт.': {'kk': 'дана', 'ru': 'шт.'},
-            'кг.': {'kk': 'кг.', 'ru': 'кг.'},
-            'л.': {'kk': 'л.', 'ru': 'л.'},
-            'м.': {'kk': 'м.', 'ru': 'м.'},
-            'упак.': {'kk': 'орам', 'ru': 'упак.'},
-        }
-    }
-    
-    translations = TRANSLATIONS.get(category, {})
-    if original_name in translations:
-        return translations[original_name].get(get_language(), original_name)
-    return original_name
 
 def update_transaction_totals(transaction):
     """Update transaction totals based on items"""
