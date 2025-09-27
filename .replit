@@ -1,4 +1,4 @@
-modules = ["web", "python-3.11"]
+modules = ["web", "python-3.11", "postgresql-16"]
 [agent]
 expertMode = true
 
@@ -16,10 +16,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Flask POS App"
+args = "POS Frontend Server"
 
 [[workflows.workflow]]
-name = "Flask POS App"
+name = "POS Frontend Server"
 author = "agent"
 
 [[workflows.workflow.tasks]]
@@ -35,9 +35,9 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 37143
+localPort = 43985
 externalPort = 3000
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["gunicorn", "--bind", "0.0.0.0:5000", "--reuse-port", "--env", "ADMIN_PASSWORD=SecureAdmin2024!", "main:app"]
+run = ["gunicorn", "--bind", "0.0.0.0:5000", "--reuse-port", "main:app"]

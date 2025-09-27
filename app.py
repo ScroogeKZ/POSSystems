@@ -48,13 +48,12 @@ def create_default_admin_user():
             print("   Example: MySecureP@ssw0rd123")
             raise RuntimeError("Admin password must contain uppercase, lowercase, and numbers for security")
         
-        admin = User(
-            username='admin',
-            email='admin@pos.kz',
-            first_name='Админ',
-            last_name='Жүйесі',
-            role=UserRole.ADMIN
-        )
+        admin = User()
+        admin.username = 'admin'
+        admin.email = 'admin@pos.kz'
+        admin.first_name = 'Админ'
+        admin.last_name = 'Жүйесі'
+        admin.role = UserRole.ADMIN
         admin.set_password(admin_password)
         db.session.add(admin)
         db.session.commit()
@@ -169,13 +168,12 @@ def create_app():
                 return render_template('auth/register.html')
             
             # Create new user
-            new_user = User(
-                username=username,
-                email=email,
-                first_name=first_name,
-                last_name=last_name,
-                role=UserRole(role)
-            )
+            new_user = User()
+            new_user.username = username
+            new_user.email = email
+            new_user.first_name = first_name
+            new_user.last_name = last_name
+            new_user.role = UserRole(role)
             new_user.set_password(password)
             
             db.session.add(new_user)
@@ -229,17 +227,16 @@ def log_operation(action, description=None, entity_type=None, entity_id=None, ol
     """Log user operations for audit trail"""
     if current_user.is_authenticated:
         try:
-            log_entry = OperationLog(
-                action=action,
-                description=description,
-                entity_type=entity_type,
-                entity_id=entity_id,
-                old_values=json.dumps(old_values) if old_values else None,
-                new_values=json.dumps(new_values) if new_values else None,
-                ip_address=request.remote_addr,
-                user_agent=request.headers.get('User-Agent'),
-                user_id=current_user.id
-            )
+            log_entry = OperationLog()
+            log_entry.action = action
+            log_entry.description = description
+            log_entry.entity_type = entity_type
+            log_entry.entity_id = entity_id
+            log_entry.old_values = json.dumps(old_values) if old_values else None
+            log_entry.new_values = json.dumps(new_values) if new_values else None
+            log_entry.ip_address = request.remote_addr
+            log_entry.user_agent = request.headers.get('User-Agent')
+            log_entry.user_id = current_user.id
             db.session.add(log_entry)
             db.session.commit()
         except Exception as e:
@@ -332,7 +329,7 @@ def set_language(language):
 # Make language functions available in templates
 @app.context_processor
 def inject_language_functions():
-    return dict(get_language=get_language, get_text=get_text, translate_name=translate_name)
+    return dict(get_language=get_language, get_text=get_text, translate_name=translate_name, UserRole=UserRole)
 
 # Routes
 @app.route('/')
@@ -597,12 +594,52 @@ def reports():
         Product.is_active == True
     ).order_by(Product.stock_quantity.asc()).all()
     
+    # Convert Row objects to dictionaries for JSON serialization
+    daily_sales = [{
+        'date': str(row.date),
+        'total_revenue': float(row.total_revenue or 0),
+        'total_profit': float(row.total_profit or 0)
+    } for row in daily_sales]
+    
+    monthly_sales = [{
+        'month': str(row.month),
+        'total_revenue': float(row.total_revenue or 0),
+        'total_profit': float(row.total_profit or 0)
+    } for row in monthly_sales]
+    
+    top_products = [{
+        'name': row.name,
+        'total_sold': float(row.total_sold or 0),
+        'total_revenue': float(row.total_revenue or 0),
+        'total_profit': float(row.total_profit or 0),
+        'avg_profit_per_unit': float(row.avg_profit_per_unit or 0)
+    } for row in top_products]
+    
+    category_analysis = [{
+        'name': row.name,
+        'total_transactions': int(row.total_transactions or 0),
+        'total_sold': float(row.total_sold or 0),
+        'total_revenue': float(row.total_revenue or 0),
+        'total_profit': float(row.total_profit or 0)
+    } for row in category_analysis]
+    
+    inventory_report = [{
+        'name': row.name,
+        'sku': row.sku,
+        'stock_quantity': int(row.stock_quantity or 0),
+        'min_stock_level': int(row.min_stock_level or 0),
+        'price': float(row.price or 0),
+        'cost_price': float(row.cost_price or 0),
+        'category_name': row.category_name,
+        'supplier_name': row.supplier_name
+    } for row in inventory_report]
+    
     # Low stock items
-    low_stock_items = [item for item in inventory_report if item.stock_quantity <= item.min_stock_level]
+    low_stock_items = [item for item in inventory_report if item['stock_quantity'] <= item['min_stock_level']]
     
     # Calculate key metrics
-    total_revenue = sum(sale.total_revenue or 0 for sale in daily_sales)
-    total_profit = sum(sale.total_profit or 0 for sale in daily_sales)
+    total_revenue = sum(sale['total_revenue'] or 0 for sale in daily_sales)
+    total_profit = sum(sale['total_profit'] or 0 for sale in daily_sales)
     profit_margin = (total_profit / total_revenue * 100) if total_revenue > 0 else 0
     
     return render_template('reports.html',
@@ -910,7 +947,41 @@ def get_reports_data(start_date, end_date):
         Product.is_active == True
     ).order_by(Product.stock_quantity.asc()).all()
     
-    return daily_sales, category_analysis, top_products, inventory_report
+    # Convert Row objects to dictionaries for JSON serialization
+    daily_sales_data = [{
+        'date': str(row.date),
+        'total_revenue': float(row.total_revenue or 0),
+        'total_profit': float(row.total_profit or 0)
+    } for row in daily_sales]
+    
+    category_analysis_data = [{
+        'name': row.name,
+        'total_transactions': int(row.total_transactions or 0),
+        'total_sold': float(row.total_sold or 0),
+        'total_revenue': float(row.total_revenue or 0),
+        'total_profit': float(row.total_profit or 0)
+    } for row in category_analysis]
+    
+    top_products_data = [{
+        'name': row.name,
+        'total_sold': float(row.total_sold or 0),
+        'total_revenue': float(row.total_revenue or 0),
+        'total_profit': float(row.total_profit or 0),
+        'avg_profit_per_unit': float(row.avg_profit_per_unit or 0)
+    } for row in top_products]
+    
+    inventory_report_data = [{
+        'name': row.name,
+        'sku': row.sku,
+        'stock_quantity': int(row.stock_quantity or 0),
+        'min_stock_level': int(row.min_stock_level or 0),
+        'price': float(row.price or 0),
+        'cost_price': float(row.cost_price or 0),
+        'category_name': row.category_name,
+        'supplier_name': row.supplier_name
+    } for row in inventory_report]
+    
+    return daily_sales_data, category_analysis_data, top_products_data, inventory_report_data
 
 # API Routes for POS functionality
 @app.route('/api/transaction/start', methods=['POST'])
