@@ -37,3 +37,9 @@ class Config:
     # CSRF settings
     WTF_CSRF_TIME_LIMIT = 3600  # CSRF token expires in 1 hour (3600 seconds)
     WTF_CSRF_SSL_STRICT = os.environ.get('FLASK_ENV') == 'production'  # Force HTTPS only in production
+    
+    # Redis caching settings
+    REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    CACHE_TYPE = 'redis'
+    CACHE_REDIS_URL = REDIS_URL
+    CACHE_DEFAULT_TIMEOUT = 300

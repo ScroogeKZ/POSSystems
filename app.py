@@ -9,6 +9,7 @@ from flask_wtf.csrf import CSRFProtect
 from data_initialization import initialize_sample_data
 from datetime import datetime
 from sqlalchemy import desc, func, inspect
+from services.cache_service import init_cache
 
 
 def create_default_admin_user():
@@ -61,6 +62,9 @@ def create_app():
     # Initialize extensions
     db.init_app(app)
     
+    # Initialize caching
+    cache = init_cache(app)
+    
     # Initialize CSRF protection
     csrf = CSRFProtect()
     csrf.init_app(app)
@@ -68,7 +72,7 @@ def create_app():
     # Initialize Flask-Login
     login_manager = LoginManager()
     login_manager.init_app(app)
-    login_manager.login_view = 'auth.login'
+    login_manager.login_view = 'auth.login'  # type: ignore
     login_manager.login_message = 'Жүйеге кіру қажет / Необходимо войти в систему'
     login_manager.login_message_category = 'info'
     
@@ -199,27 +203,22 @@ def inject_language_functions():
 @app.route('/')
 @login_required
 def index():
-    """Main dashboard"""
-    # Get quick stats for dashboard
-    total_products = Product.query.filter_by(is_active=True).count()
-    low_stock_count = Product.query.filter(Product.stock_quantity <= Product.min_stock_level).count()
+    """Main dashboard with caching"""
+    from services.cache_service import cache_service
     
-    # Today's sales
-    today = datetime.now().date()
-    today_sales = db.session.query(func.sum(Transaction.total_amount)).filter(
-        func.date(Transaction.created_at) == today,
-        Transaction.status == TransactionStatus.COMPLETED
-    ).scalar() or 0
+    # Get cached dashboard stats
+    stats = cache_service.get_dashboard_stats()
     
-    # Recent transactions
+    # Recent transactions (не кэшируем для актуальности)
     recent_transactions = Transaction.query.filter_by(status=TransactionStatus.COMPLETED)\
         .order_by(desc(Transaction.created_at)).limit(5).all()
     
     return render_template('dashboard.html', 
-                         total_products=total_products,
-                         low_stock_count=low_stock_count,
-                         today_sales=today_sales,
-                         recent_transactions=recent_transactions)
+                         total_products=stats['total_products'],
+                         low_stock_count=stats['low_stock_count'],
+                         today_sales=stats['today_sales'],
+                         recent_transactions=recent_transactions,
+                         cache_info=cache_service.get_cache_info())
 
 # Error handlers
 @app.errorhandler(404)
