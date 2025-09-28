@@ -4,15 +4,22 @@ from models import db, Product, Category, Transaction, TransactionItem, Payment,
 from models import PaymentMethod, TransactionStatus, UnitType, UserRole
 from utils.helpers import log_operation, generate_transaction_number
 from utils.language import get_language, translate_name
-from sqlalchemy import or_, desc, func
+from sqlalchemy import or_, desc, func, and_
 from decimal import Decimal
 from datetime import datetime, timedelta
 import json
 import secrets
 import string
+import time
 
 # Create Blueprint
 pos_bp = Blueprint('pos', __name__)
+
+# В памяти кеш для популярных товаров с индивидуальными TTL
+popular_products_cache = {
+    'ttl': 300,  # 5 минут кеша
+    'entries': {}  # Структура: {'key': {'data': [...], 'timestamp': time.time()}}
+}
 
 # Helper functions
 
@@ -120,67 +127,97 @@ def search_barcode():
             'error': f'Product with barcode {barcode} not found'
         })
 
+def get_cached_popular_products(limit=10, days=30):
+    """Получить популярные товары с кешированием"""
+    current_time = time.time()
+    cache_key = f"{limit}_{days}"
+    
+    # Проверяем кеш для конкретного ключа
+    if (cache_key in popular_products_cache['entries'] and
+        popular_products_cache['entries'][cache_key]['timestamp'] + popular_products_cache['ttl'] > current_time):
+        return popular_products_cache['entries'][cache_key]['data']
+    
+    # Вычисляем данные
+    cutoff_date = datetime.utcnow() - timedelta(days=days)
+    
+    popular_products_query = db.session.query(
+        Product.id,
+        Product.name,
+        Product.sku,
+        Product.price,
+        Product.stock_quantity,
+        Product.unit_type,
+        Product.image_filename,
+        func.count(TransactionItem.id).label('transaction_count'),
+        func.sum(TransactionItem.quantity).label('total_sold'),
+        func.avg(TransactionItem.quantity).label('avg_quantity_per_sale')
+    ).join(
+        TransactionItem, Product.id == TransactionItem.product_id
+    ).join(
+        Transaction, TransactionItem.transaction_id == Transaction.id
+    ).filter(
+        Product.is_active == True,
+        Transaction.status == TransactionStatus.COMPLETED,
+        Transaction.completed_at >= cutoff_date
+    ).group_by(
+        Product.id, Product.name, Product.sku, Product.price, 
+        Product.stock_quantity, Product.unit_type, Product.image_filename
+    ).order_by(
+        func.count(TransactionItem.id).desc(),
+        func.sum(TransactionItem.quantity).desc()
+    ).limit(limit)
+    
+    popular_products = popular_products_query.all()
+    
+    # Форматируем данные
+    products_data = []
+    for product in popular_products:
+        products_data.append({
+            'id': product.id,
+            'name': translate_name(product.name, 'products'),
+            'sku': product.sku,
+            'price': float(product.price),
+            'stock_quantity': product.stock_quantity,
+            'unit_type': translate_name(product.unit_type.value, 'units'),
+            'image_filename': product.image_filename,
+            'popularity_stats': {
+                'transaction_count': product.transaction_count,
+                'total_sold': float(product.total_sold) if product.total_sold else 0,
+                'avg_quantity_per_sale': round(float(product.avg_quantity_per_sale), 2) if product.avg_quantity_per_sale else 0
+            }
+        })
+    
+    # Сохраняем в кеш с индивидуальным timestamp
+    popular_products_cache['entries'][cache_key] = {
+        'data': products_data,
+        'timestamp': current_time
+    }
+    
+    # Ограничиваем размер кеша (максимум 20 записей)
+    if len(popular_products_cache['entries']) > 20:
+        # Удаляем самую старую запись
+        oldest_key = min(popular_products_cache['entries'].keys(), 
+                        key=lambda k: popular_products_cache['entries'][k]['timestamp'])
+        del popular_products_cache['entries'][oldest_key]
+    
+    return products_data
+
+
+def clear_popular_products_cache():
+    """Очистка кеша популярных товаров (используется при завершении транзакций)"""
+    popular_products_cache['entries'].clear()
+
+
 @pos_bp.route('/api/popular-products')
 @login_required
 def get_popular_products():
-    """API endpoint for getting popular/frequently bought products"""
+    """API endpoint for getting popular/frequently bought products с кешированием"""
     try:
         limit = min(int(request.args.get('limit', 10)), 20)  # Max 20 products
         days = min(int(request.args.get('days', 30)), 90)  # Max 90 days
         
-        # Calculate product popularity based on transaction frequency and quantity
-        # within the specified time period
-        from datetime import datetime, timedelta
-        
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
-        
-        # Get popular products with sales statistics
-        popular_products_query = db.session.query(
-            Product.id,
-            Product.name,
-            Product.sku,
-            Product.price,
-            Product.stock_quantity,
-            Product.unit_type,
-            Product.image_filename,
-            func.count(TransactionItem.id).label('transaction_count'),
-            func.sum(TransactionItem.quantity).label('total_sold'),
-            func.avg(TransactionItem.quantity).label('avg_quantity_per_sale')
-        ).join(
-            TransactionItem, Product.id == TransactionItem.product_id
-        ).join(
-            Transaction, TransactionItem.transaction_id == Transaction.id
-        ).filter(
-            Product.is_active == True,
-            Transaction.status == TransactionStatus.COMPLETED,
-            Transaction.completed_at >= cutoff_date
-        ).group_by(
-            Product.id, Product.name, Product.sku, Product.price, 
-            Product.stock_quantity, Product.unit_type, Product.image_filename
-        ).order_by(
-            func.count(TransactionItem.id).desc(),  # Primary: transaction frequency
-            func.sum(TransactionItem.quantity).desc()  # Secondary: total quantity sold
-        ).limit(limit)
-        
-        popular_products = popular_products_query.all()
-        
-        # Format response
-        products_data = []
-        for product in popular_products:
-            products_data.append({
-                'id': product.id,
-                'name': translate_name(product.name, 'products'),
-                'sku': product.sku,
-                'price': float(product.price),
-                'stock_quantity': product.stock_quantity,
-                'unit_type': translate_name(product.unit_type.value, 'units'),
-                'image_filename': product.image_filename,
-                'popularity_stats': {
-                    'transaction_count': product.transaction_count,
-                    'total_sold': float(product.total_sold) if product.total_sold else 0,
-                    'avg_quantity_per_sale': round(float(product.avg_quantity_per_sale), 2) if product.avg_quantity_per_sale else 0
-                }
-            })
+        # Используем кешированную версию
+        products_data = get_cached_popular_products(limit, days)
         
         return jsonify({
             'success': True,
@@ -195,6 +232,83 @@ def get_popular_products():
             'success': False,
             'error': 'Failed to retrieve popular products'
         })
+
+@pos_bp.route('/api/low-stock-alerts')
+@login_required
+def get_low_stock_alerts():
+    """API endpoint для получения уведомлений о низких остатках товаров (только для менеджеров)"""
+    # Проверяем права доступа - только менеджеры и админы
+    if not current_user.can_access(UserRole.MANAGER):
+        return jsonify({
+            'success': False, 
+            'error': 'Доступ запрещён. Требуются права менеджера или администратора.'
+        }), 403
+    
+    try:
+        # Получаем товары с низкими остатками с правильной логикой для min_stock_level=0
+        low_stock_query = db.session.query(
+            Product.id,
+            Product.name,
+            Product.sku,
+            Product.stock_quantity,
+            Product.min_stock_level,
+            Product.unit_type,
+            Category.name.label('category_name')
+        ).outerjoin(Category, Product.category_id == Category.id).filter(
+            Product.is_active == True,
+            # Правильная логика: если min_stock_level=0 (не задан), используем 5 как по умолчанию
+            Product.stock_quantity <= func.coalesce(func.nullif(Product.min_stock_level, 0), 5)
+        ).order_by(Product.stock_quantity.asc()).all()
+        
+        alerts = []
+        for row in low_stock_query:
+            min_level = row.min_stock_level or 5
+            # Определяем уровень критичности
+            if row.stock_quantity == 0:
+                severity = 'critical'  # Товар закончился
+                message = 'Товар закончился'
+            elif row.stock_quantity <= min_level * 0.5:
+                severity = 'high'  # Критически низкий остаток
+                message = 'Критически низкий остаток'
+            else:
+                severity = 'medium'  # Низкий остаток
+                message = 'Низкий остаток товара'
+            
+            # Локализованные сообщения
+            if severity == 'critical':
+                localized_message = translate_name('Товар закончился', 'alerts') 
+            elif severity == 'high':
+                localized_message = translate_name('Критически низкий остаток', 'alerts')
+            else:
+                localized_message = translate_name('Низкий остаток товара', 'alerts')
+            
+            alerts.append({
+                'product_id': row.id,
+                'product_name': translate_name(row.name, 'products'),
+                'sku': row.sku,
+                'current_stock': row.stock_quantity,
+                'min_stock_level': min_level,
+                'severity': severity,
+                'message': localized_message,
+                'category': translate_name(row.category_name, 'categories') if row.category_name else translate_name('Без категории', 'general'),
+                'unit_type': translate_name(row.unit_type.value, 'units') if row.unit_type else translate_name('шт.', 'units')
+            })
+        
+        return jsonify({
+            'success': True,
+            'alerts': alerts,
+            'total_alerts': len(alerts),
+            'critical_count': len([a for a in alerts if a['severity'] == 'critical']),
+            'high_priority_count': len([a for a in alerts if a['severity'] == 'high'])
+        })
+        
+    except Exception as e:
+        print(f"Error getting low stock alerts: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Failed to retrieve stock alerts'
+        })
+
 
 @pos_bp.route('/api/quick-access-products')
 @login_required 
@@ -475,6 +589,9 @@ def complete_transaction():
         transaction.user_id = current_user.id if current_user.is_authenticated else None
         
         db.session.commit()
+        
+        # Очищаем кеш популярных товаров после успешной продажи
+        clear_popular_products_cache()
         
         # Log the completed sale
         log_operation(

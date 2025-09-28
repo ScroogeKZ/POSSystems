@@ -70,6 +70,7 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
     login_manager.login_message = 'Жүйеге кіру қажет / Необходимо войти в систему'
+    login_manager.login_message_category = 'info'
     
     @login_manager.user_loader
     def load_user(user_id):

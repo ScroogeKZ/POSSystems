@@ -132,8 +132,14 @@
                 <div class="transaction-header">
                     <div class="d-flex justify-content-between align-items-center">
                         <h4>{{ get_text('Чек', 'Транзакция') }}</h4>
-                        <div id="transactionInfo" style="display: none;">
-                            <span class="badge bg-primary fs-6" id="transactionNumber"></span>
+                        <div class="d-flex align-items-center gap-2">
+                            <!-- Sound Toggle Button -->
+                            <button type="button" id="toggleSoundBtn" class="btn btn-outline-secondary btn-sm" title="Выключить звук">
+                                <i class="fas fa-volume-up"></i>
+                            </button>
+                            <div id="transactionInfo" style="display: none;">
+                                <span class="badge bg-primary fs-6" id="transactionNumber"></span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -504,6 +510,9 @@ class BarcodeScanner {
             const data = await response.json();
             
             if (data.success && data.product) {
+                // Воспроизводим звук успешного сканирования
+                window.posSound && window.posSound.successBeep();
+                
                 // Add product to search results
                 displaySearchResults([data.product]);
                 this.updateStatus(`Товар найден: ${data.product.name}`, 'success');
@@ -513,6 +522,8 @@ class BarcodeScanner {
                     addToCart(data.product);
                 }
             } else {
+                // Воспроизводим звук ошибки сканирования
+                window.posSound && window.posSound.errorBeep();
                 this.updateStatus('Товар не найден', 'warning');
                 alert(`Товар с штрих-кодом ${barcode} не найден в базе данных.`);
             }
@@ -661,12 +672,16 @@ async function startNewTransaction() {
         const result = await response.json();
         
         if (result.success) {
+            // Короткий сигнал начала транзакции
+            window.posSound && window.posSound.addItemBeep();
+            
             currentTransaction = result;
             document.getElementById('transactionNumber').textContent = result.transaction_number;
             document.getElementById('transactionInfo').style.display = 'block';
             document.getElementById('startTransaction').style.display = 'none';
             document.getElementById('transactionActions').style.display = 'block';
         } else {
+            window.posSound && window.posSound.errorBeep();
             alert('Ошибка создания транзакции: ' + result.error);
         }
     } catch (error) {
@@ -703,8 +718,19 @@ async function addToCart(productId, productName, price) {
         const result = await response.json();
         
         if (result.success) {
+            // Воспроизводим звук успешного добавления товара
+            window.posSound && window.posSound.addItemBeep();
+            
+            // Проверяем остатки для предупреждения
+            if (result.product && result.product.stock_quantity <= 5) {
+                window.posSound && window.posSound.warningBeep();
+                showNotification(`Низкий остаток: ${result.product.name} (${result.product.stock_quantity} шт.)`, 'warning', 4000);
+            }
+            
             updateCartDisplay();
         } else {
+            // Воспроизводим звук ошибки
+            window.posSound && window.posSound.errorBeep();
             alert('Ошибка добавления товара: ' + result.error);
         }
     } catch (error) {
@@ -810,6 +836,9 @@ async function clearCart() {
                     });
                 }
                 
+                // Воспроизводим звук очистки корзины
+                window.posSound && window.posSound.clearCartBeep();
+                
                 // Update display
                 updateCartDisplay();
             }
@@ -837,9 +866,12 @@ async function suspendTransaction() {
         const result = await response.json();
         
         if (result.success) {
+            // Воспроизводим звук приостановки
+            window.posSound && window.posSound.suspendBeep();
             alert(result.message);
             location.reload();
         } else {
+            window.posSound && window.posSound.errorBeep();
             alert('Ошибка: ' + result.error);
         }
     } catch (error) {
@@ -909,11 +941,15 @@ async function processPayment(paymentMethod) {
         const result = await response.json();
         
         if (result.success) {
+            // Воспроизводим мелодичный звук успешного завершения
+            window.posSound && window.posSound.completeBeep();
+            
             alert(`Оплата успешно завершена!\nЧек: ${result.transaction_number}\nСумма: ${result.total_amount.toFixed(2)} ₸`);
             
             // Reset interface
             location.reload();
         } else {
+            window.posSound && window.posSound.errorBeep();
             alert('Ошибка оплаты: ' + result.error);
         }
     } catch (error) {
@@ -937,8 +973,11 @@ async function removeFromCart(itemId) {
         const result = await response.json();
         
         if (result.success) {
+            // Воспроизводим звук удаления товара
+            window.posSound && window.posSound.removeItemBeep();
             updateCartDisplay();
         } else {
+            window.posSound && window.posSound.errorBeep();
             alert('Ошибка удаления товара: ' + result.error);
         }
     } catch (error) {
@@ -982,10 +1021,13 @@ async function applyQuickDiscount(value, type) {
         const result = await response.json();
         
         if (result.success) {
+            // Воспроизводим звук успешного применения скидки
+            window.posSound && window.posSound.discountBeep();
             updateCartDisplay();
             showDiscountFeedback(result.message, 'success');
             document.getElementById('removeDiscountBtn').style.display = 'block';
         } else {
+            window.posSound && window.posSound.errorBeep();
             showDiscountFeedback(result.error, 'error');
         }
     } catch (error) {
@@ -1022,11 +1064,14 @@ async function applyPromoCode() {
         const result = await response.json();
         
         if (result.success) {
+            // Воспроизводим звук успешного применения промокода
+            window.posSound && window.posSound.discountBeep();
             updateCartDisplay();
             showPromoCodeFeedback(result.message, 'success');
             promoCodeInput.value = '';
             document.getElementById('removeDiscountBtn').style.display = 'block';
         } else {
+            window.posSound && window.posSound.errorBeep();
             showPromoCodeFeedback(result.error, 'error');
         }
     } catch (error) {
@@ -1067,11 +1112,14 @@ async function applyCustomDiscount() {
         const result = await response.json();
         
         if (result.success) {
+            // Воспроизводим звук успешного применения кастомной скидки
+            window.posSound && window.posSound.discountBeep();
             updateCartDisplay();
             showDiscountFeedback(result.message, 'success');
             valueInput.value = '';
             document.getElementById('removeDiscountBtn').style.display = 'block';
         } else {
+            window.posSound && window.posSound.errorBeep();
             showDiscountFeedback(result.error, 'error');
         }
     } catch (error) {
@@ -1384,6 +1432,369 @@ function displayQuickAccessProducts(products) {
     });
 }
 
+// Звуковая система реализована глобально в base.html как window.posSound
+    
+    // Инициализация AudioContext при первом пользовательском взаимодействии
+    async prime() {
+        if (this.audioContext || this.isPrimed) return true;
+        
+        try {
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextClass) {
+                console.warn('Web Audio API не поддерживается браузером');
+                this.soundEnabled = false;
+                return false;
+            }
+            
+            this.audioContext = new AudioContextClass();
+            
+            // Принудительное возобновление контекста
+            if (this.audioContext.state === 'suspended') {
+                await this.audioContext.resume();
+            }
+            
+            // Воспроизводим беззвучный буфер для "прогрева" системы
+            const buffer = this.audioContext.createBuffer(1, 1, 22050);
+            const source = this.audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(this.audioContext.destination);
+            source.start();
+            
+            this.initialized = true;
+            this.isPrimed = true;
+            
+            console.log('Звуковая система успешно инициализирована');
+            return true;
+            
+        } catch (e) {
+            console.warn('Ошибка инициализации звуковой системы:', e);
+            this.soundEnabled = false;
+            return false;
+        }
+    }
+    
+    // Возобновляем AudioContext при первом взаимодействии
+    async ensureAudioContextActive() {
+        if (!this.audioContext || !this.soundEnabled) return false;
+        
+        try {
+            if (this.audioContext.state === 'suspended') {
+                await this.audioContext.resume();
+                console.log('AudioContext возобновлён');
+            }
+            return this.audioContext.state === 'running';
+        } catch (e) {
+            console.warn('Не удалось возобновить AudioContext:', e);
+            return false;
+        }
+    }
+    
+    // Дебаунс для избежания повторных звуков
+    shouldPlaySound() {
+        const now = Date.now();
+        if (now - this.lastBeepTime < 250) return false; // 250мс минимальный интервал
+        this.lastBeepTime = now;
+        return true;
+    }
+    
+    // Улучшенное воспроизведение тона с ADSR обвязкой
+    async playTone(frequency, duration, volume = this.masterVolume) {
+        if (!this.soundEnabled || !this.shouldPlaySound()) return;
+        
+        // Проверяем что система проинициализирована
+        if (!this.isPrimed || !this.audioContext) {
+            console.warn('Звуковая система не активирована пользователем');
+            return;
+        }
+        
+        const isActive = await this.ensureAudioContextActive();
+        if (!isActive) return;
+        
+        try {
+            const oscillator = this.audioContext.createOscillator();
+            const gainNode = this.audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(this.audioContext.destination);
+            
+            // Настройки звука для POS-среды
+            oscillator.frequency.setValueAtTime(frequency, this.audioContext.currentTime);
+            oscillator.type = 'triangle'; // Более мягкий звук чем square
+            
+            // ADSR обвязка: быстрая атака, плавное затухание
+            const startTime = this.audioContext.currentTime;
+            const attackTime = 0.005; // 5мс атака
+            const decayTime = duration - 0.05; // Основная часть
+            const releaseTime = 0.05; // 50мс затухание
+            
+            gainNode.gain.setValueAtTime(0, startTime);
+            gainNode.gain.linearRampToValueAtTime(volume, startTime + attackTime);
+            gainNode.gain.linearRampToValueAtTime(volume * 0.7, startTime + attackTime + decayTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+            
+            oscillator.start(startTime);
+            oscillator.stop(startTime + duration);
+        } catch (e) {
+            console.warn('Ошибка воспроизведения звука:', e);
+        }
+    }
+    
+    // Оптимизированные звуки для POS (согласно рекомендациям архитектора)
+    successBeep() {
+        this.playTone(1200, 0.08); // Высокий чистый тон успеха
+    }
+    
+    // Ошибка сканирования - два коротких низких тона
+    errorBeep() {
+        this.playTone(300, 0.12);
+        setTimeout(() => this.playTone(350, 0.12), 160);
+    }
+    
+    // Предупреждение (низкий остаток) - два средних тона с паузой
+    warningBeep() {
+        this.playTone(500, 0.08);
+        setTimeout(() => this.playTone(500, 0.08), 160);
+    }
+    
+    // Добавление товара в корзину - короткий приятный тон
+    addItemBeep() {
+        this.playTone(1400, 0.06); // Высокий короткий сигнал
+    }
+    
+    // Удаление товара из корзины - мягкий нисходящий тон
+    removeItemBeep() {
+        this.playTone(800, 0.08); // Средний тон
+    }
+    
+    // Очистка корзины - двойной мягкий тон
+    clearCartBeep() {
+        this.playTone(600, 0.1);
+        setTimeout(() => this.playTone(400, 0.1), 120);
+    }
+    
+    // Приостановка транзакции - нейтральный клик
+    suspendBeep() {
+        this.playTone(1000, 0.04); // Очень короткий клик
+    }
+    
+    // Применение скидки - приятный тон
+    discountBeep() {
+        this.playTone(1200, 0.1);
+    }
+    
+    // Завершение транзакции - восходящая мелодия
+    completeBeep() {
+        this.playTone(800, 0.12);
+        setTimeout(() => this.playTone(1000, 0.12), 120);
+        setTimeout(() => this.playTone(1300, 0.18), 240);
+    }
+    
+    // Переключение звука вкл/выкл с сохранением в localStorage
+    toggleSound() {
+        this.soundEnabled = !this.soundEnabled;
+        this.saveSoundPreference();
+        this.updateSoundButton();
+        
+        const status = this.soundEnabled ? 'включены' : 'выключены';
+        showNotification(`Звуковые уведомления ${status}`, 'info', 2000);
+        
+        // Тестовый звук при включении
+        if (this.soundEnabled) {
+            setTimeout(() => this.addItemBeep(), 200);
+        }
+        
+        return this.soundEnabled;
+    }
+    
+    // Применение сохранённых настроек к UI при загрузке
+    applySettingsToUI() {
+        this.updateSoundButton();
+    }
+    
+    // Обновление иконки кнопки звука в UI
+    updateSoundButton() {
+        const soundBtn = document.getElementById('toggleSoundBtn');
+        if (soundBtn) {
+            const icon = soundBtn.querySelector('i');
+            if (icon) {
+                icon.className = this.soundEnabled ? 'fas fa-volume-up' : 'fas fa-volume-mute';
+            }
+            soundBtn.title = this.soundEnabled ? 'Выключить звук' : 'Включить звук';
+            soundBtn.classList.toggle('btn-outline-secondary', this.soundEnabled);
+            soundBtn.classList.toggle('btn-outline-danger', !this.soundEnabled);
+        }
+    }
+}
+
+// Звуковая система загружена глобально из base.html как window.posSound
+
+// Горячие клавиши для кассиров (F1-F12)
+function setupHotkeys() {
+    // Показать справку по горячим клавишам
+    function showHotkeysHelp() {
+        const helpMessage = `
+        <div class="hotkeys-help">
+            <h5><i class="fas fa-keyboard me-2"></i>Горячие клавиши кассира</h5>
+            <div class="row">
+                <div class="col-6">
+                    <p><kbd>F1</kbd> - Новая транзакция</p>
+                    <p><kbd>F2</kbd> - Завершить транзакцию</p>
+                    <p><kbd>F3</kbd> - Отложить транзакцию</p>
+                    <p><kbd>F4</kbd> - Популярные товары</p>
+                    <p><kbd>F5</kbd> - Сканер штрих-кодов</p>
+                    <p><kbd>F6</kbd> - Отложенные чеки</p>
+                </div>
+                <div class="col-6">
+                    <p><kbd>F7</kbd> - Применить скидку</p>
+                    <p><kbd>F8</kbd> - Удалить товар</p>
+                    <p><kbd>F9</kbd> - Фокус на поиск</p>
+                    <p><kbd>F10</kbd> - Перейти к отчетам</p>
+                    <p><kbd>F11</kbd> - Переключить язык</p>
+                    <p><kbd>F12</kbd> - Эта справка</p>
+                    <p><kbd>Ctrl+M</kbd> - Вкл/выкл звук</p>
+                </div>
+            </div>
+        </div>`;
+        showNotification(helpMessage, 'info', 8000);
+    }
+    
+    // Обработчик горячих клавиш
+    document.addEventListener('keydown', function(event) {
+        // Игнорируем если фокус в input или textarea
+        if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+            // Исключение для F-клавиш при работе с поиском
+            if (event.key === 'F9') {
+                event.preventDefault();
+                document.getElementById('productSearch').focus();
+                return;
+            }
+            if (event.key.startsWith('F') && event.key !== 'F9') {
+                return; // Позволяем другие F-клавиши работать даже в полях
+            }
+        }
+        
+        switch(event.key) {
+            case 'F1':
+                event.preventDefault();
+                if (currentTransaction) {
+                    showNotification('Завершите текущую транзакцию перед началом новой', 'warning');
+                } else {
+                    startTransaction();
+                }
+                break;
+                
+            case 'F2':
+                event.preventDefault();
+                if (currentTransaction && currentTransaction.items.length > 0) {
+                    document.getElementById('checkoutBtn').click();
+                } else {
+                    showNotification('Нет товаров в корзине для завершения', 'warning');
+                }
+                break;
+                
+            case 'F3':
+                event.preventDefault();
+                if (currentTransaction && currentTransaction.items.length > 0) {
+                    suspendTransaction();
+                } else {
+                    showNotification('Нет активной транзакции для отложения', 'warning');
+                }
+                break;
+                
+            case 'F4':
+                event.preventDefault();
+                const quickAccessBtn = document.getElementById('toggleQuickAccess');
+                if (quickAccessBtn) {
+                    quickAccessBtn.click();
+                }
+                break;
+                
+            case 'F5':
+                event.preventDefault();
+                const scannerBtn = document.getElementById('toggleBarcodeScanner');
+                if (scannerBtn) {
+                    scannerBtn.click();
+                }
+                break;
+                
+            case 'F6':
+                event.preventDefault();
+                const suspendedBtn = document.getElementById('showSuspendedBtn');
+                if (suspendedBtn) {
+                    suspendedBtn.click();
+                } else {
+                    showSuspendedTransactions();
+                }
+                break;
+                
+            case 'F7':
+                event.preventDefault();
+                if (currentTransaction && currentTransaction.items.length > 0) {
+                    // Показываем поле для ввода скидки
+                    const discount = prompt('Введите размер скидки (% или ₸):');
+                    if (discount) {
+                        applyDiscount(discount);
+                    }
+                } else {
+                    showNotification('Добавьте товары в корзину для применения скидки', 'warning');
+                }
+                break;
+                
+            case 'F8':
+                event.preventDefault();
+                if (currentTransaction && currentTransaction.items.length > 0) {
+                    // Удаляем последний добавленный товар
+                    const lastItem = currentTransaction.items[currentTransaction.items.length - 1];
+                    if (lastItem) {
+                        removeFromCart(lastItem.product_id);
+                    }
+                } else {
+                    showNotification('Нет товаров для удаления', 'warning');
+                }
+                break;
+                
+            case 'F9':
+                event.preventDefault();
+                const searchInput = document.getElementById('productSearch');
+                if (searchInput) {
+                    searchInput.focus();
+                    searchInput.select();
+                }
+                break;
+                
+            case 'F10':
+                event.preventDefault();
+                window.location.href = '/reports';
+                break;
+                
+            case 'F11':
+                event.preventDefault();
+                // Переключение языка
+                const currentLang = document.documentElement.lang === 'kk' ? 'ru' : 'kk';
+                window.location.href = `/set_language/${currentLang}`;
+                break;
+                
+            case 'F12':
+                event.preventDefault();
+                showHotkeysHelp();
+                break;
+        }
+        
+        // Комбинация Ctrl+M для переключения звука
+        if (event.ctrlKey && event.key === 'm') {
+            event.preventDefault();
+            if (window.posSound) {
+                window.posSound.toggleSound();
+            }
+        }
+    });
+    
+    // Показываем уведомление о доступности горячих клавиш при загрузке
+    setTimeout(() => {
+        showNotification('<i class="fas fa-keyboard me-2"></i>Совет: Используйте клавишу F12 для просмотра горячих клавиш', 'info', 4000);
+    }, 2000);
+}
+
 // Initialize event listeners when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
     // Add event listeners for quick access and suspended transactions  
@@ -1397,6 +1808,12 @@ document.addEventListener('DOMContentLoaded', function() {
     if (suspendedBtn) {
         suspendedBtn.addEventListener('click', showSuspendedTransactions);
     }
+    
+    // Инициализируем горячие клавиши  
+    setupHotkeys();
+    
+    // Звуковая система уже инициализирована глобально в base.html
+    // Все звуковые вызовы используют window.posSound
 });
 
 </script>
