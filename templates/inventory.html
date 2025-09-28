@@ -70,7 +70,7 @@
                 <div class="row mt-3">
                     <div class="col-12">
                         <div class="d-flex flex-wrap gap-2">
-                            <a href="{{ url_for('inventory') }}" class="btn btn-outline-secondary btn-sm">
+                            <a href="{{ url_for('inventory.inventory') }}" class="btn btn-outline-secondary btn-sm">
                                 <i class="fas fa-times me-1"></i>{{ get_text('Тазарту', 'Очистить') }}
                             </a>
                             <button type="button" class="btn btn-outline-info btn-sm" onclick="exportInventory()">
@@ -199,7 +199,7 @@
                                         <i class="fas fa-search fa-3x text-muted mb-3"></i>
                                         <h5 class="text-muted">{{ get_text('Тауарлар табылмады', 'Товары не найдены') }}</h5>
                                         <p class="text-muted">{{ get_text('Іздеу критерийлерін өзгертіп көріңіз', 'Попробуйте изменить критерии поиска') }}</p>
-                                        <a href="{{ url_for('inventory') }}" class="btn btn-outline-primary">
+                                        <a href="{{ url_for('inventory.inventory') }}" class="btn btn-outline-primary">
                                             <i class="fas fa-times me-1"></i>{{ get_text('Сүзгілерді тазарту', 'Очистить фильтры') }}
                                         </a>
                                     </td>

@@ -1002,17 +1002,17 @@
             </a>
             <div class="navbar-nav ms-auto">
                 {% if current_user.is_authenticated %}
-                    <a class="nav-link" href="{{ url_for('pos') }}">
+                    <a class="nav-link" href="{{ url_for('pos.pos') }}">
                         <i class="fas fa-shopping-cart me-1"></i>{{ get_text('Кассалық бөлім', 'Касса') }}
                     </a>
-                    <a class="nav-link" href="{{ url_for('inventory') }}">
+                    <a class="nav-link" href="{{ url_for('inventory.inventory') }}">
                         <i class="fas fa-boxes me-1"></i>{{ get_text('Қойма', 'Инвентарь') }}
                     </a>
-                    <a class="nav-link" href="{{ url_for('reports') }}">
+                    <a class="nav-link" href="{{ url_for('reports.reports') }}">
                         <i class="fas fa-chart-bar me-1"></i>{{ get_text('Есептер', 'Отчеты') }}
                     </a>
                     {% if current_user.can_access(UserRole.MANAGER) %}
-                        <a class="nav-link" href="{{ url_for('users') }}">
+                        <a class="nav-link" href="{{ url_for('auth.users') }}">
                             <i class="fas fa-users me-1"></i>{{ get_text('Пайдаланушылар', 'Пользователи') }}
                         </a>
                     {% endif %}
@@ -1271,99 +1271,12 @@ class POSSoundDriver {
     }
 }
 
-// Менеджер тёмной темы
-class ThemeManager {
-    constructor() {
-        this.currentTheme = this.loadTheme();
-        this.applyTheme(this.currentTheme, false);
-    }
-    
-    loadTheme() {
-        const saved = localStorage.getItem('pos_theme');
-        return saved || 'light';
-    }
-    
-    saveTheme(theme) {
-        localStorage.setItem('pos_theme', theme);
-    }
-    
-    applyTheme(theme, animate = true) {
-        const html = document.documentElement;
-        const themeIcon = document.getElementById('themeIcon');
-        const themeToggle = document.getElementById('themeToggle');
-        
-        if (theme === 'dark') {
-            html.setAttribute('data-theme', 'dark');
-            if (themeIcon) themeIcon.className = 'fas fa-moon';
-            if (themeToggle) themeToggle.title = 'Переключить на светлую тему (Ctrl+T)';
-        } else {
-            html.removeAttribute('data-theme');
-            if (themeIcon) themeIcon.className = 'fas fa-sun';
-            if (themeToggle) themeToggle.title = 'Переключить на тёмную тему (Ctrl+T)';
-        }
-        
-        this.currentTheme = theme;
-        if (animate) {
-            // Плавная анимация переключения
-            document.body.style.transition = 'none';
-            setTimeout(() => {
-                document.body.style.transition = '';
-            }, 50);
-        }
-    }
-    
-    toggleTheme() {
-        const newTheme = this.currentTheme === 'light' ? 'dark' : 'light';
-        this.applyTheme(newTheme, true);
-        this.saveTheme(newTheme);
-        
-        // Звуковой фидбек при переключении
-        if (window.posSound) {
-            window.posSound.successBeep();
-        }
-        
-        return newTheme;
-    }
-    
-    initializeUI() {
-        const themeToggle = document.getElementById('themeToggle');
-        if (themeToggle && !themeToggle.hasAttribute('data-theme-bound')) {
-            themeToggle.addEventListener('click', () => this.toggleTheme());
-            themeToggle.setAttribute('data-theme-bound', 'true');
-        }
-        
-        // Горячая клавиша Ctrl+T
-        document.addEventListener('keydown', (e) => {
-            if (e.ctrlKey && e.key === 't') {
-                e.preventDefault();
-                this.toggleTheme();
-            }
-        });
-        
-        // Применяем сохранённую тему при загрузке
-        this.applyTheme(this.currentTheme, false);
-    }
-}
-
-// Инициализация темы до загрузки DOM для избежания мерцания
-const initThemeEarly = () => {
-    const savedTheme = localStorage.getItem('pos_theme') || 'light';
-    if (savedTheme === 'dark') {
-        document.documentElement.setAttribute('data-theme', 'dark');
-    }
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', 
-        savedTheme === 'dark' ? '#1a1a1a' : '#007bff');
-};
-initThemeEarly();
-
 // Создаём глобальные синглтоны
 window.posSound = new POSSoundDriver();
-window.themeManager = new ThemeManager();
 
 // Инициализация при загрузке DOM
 document.addEventListener('DOMContentLoaded', () => {
     window.posSound.initializeUI();
-    window.themeManager.initializeUI();
 });
 </script>
 

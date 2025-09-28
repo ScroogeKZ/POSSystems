@@ -22,19 +22,31 @@ args = "POS System"
 name = "POS System"
 author = "agent"
 
-[workflows.workflow.metadata]
-outputType = "webview"
-
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python main.py"
+args = "ADMIN_PASSWORD=KyCBRlh3ZHBjazjR python main.py"
 waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
 
 [[ports]]
 localPort = 5000
 externalPort = 80
 
+[[ports]]
+localPort = 33957
+externalPort = 3000
+
+[[ports]]
+localPort = 35743
+externalPort = 3002
+
+[[ports]]
+localPort = 42465
+externalPort = 3001
+
 [deployment]
 deploymentTarget = "autoscale"
-run = ["gunicorn", "--bind", "0.0.0.0:5000", "main:app"]
+run = ["gunicorn", "--bind", "0.0.0.0:5000", "--reuse-port", "main:app"]
 build = ["uv", "sync", "--no-dev"]
