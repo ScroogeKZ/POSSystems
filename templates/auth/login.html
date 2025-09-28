@@ -82,6 +82,7 @@
         {% endwith %}
 
         <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-group">
                 <div class="input-group">
                     <span class="input-group-text bg-transparent border-end-0" style="border-radius: 50px 0 0 50px;">

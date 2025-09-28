@@ -5,6 +5,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from models import db, Product, Transaction, User, UserRole
 from models import TransactionStatus
 from flask_login import LoginManager, login_required, current_user
+from flask_wtf.csrf import CSRFProtect
 from data_initialization import initialize_sample_data
 from datetime import datetime
 from sqlalchemy import desc, func, inspect
@@ -59,6 +60,10 @@ def create_app():
     
     # Initialize extensions
     db.init_app(app)
+    
+    # Initialize CSRF protection
+    csrf = CSRFProtect()
+    csrf.init_app(app)
     
     # Initialize Flask-Login
     login_manager = LoginManager()

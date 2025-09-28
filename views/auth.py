@@ -17,7 +17,7 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/auth')
 def login():
     """User login"""
     if current_user.is_authenticated:
-        return redirect(url_for('main.index'))
+        return redirect(url_for('index'))
     
     if request.method == 'POST':
         username = request.form.get('username')
@@ -34,7 +34,7 @@ def login():
             
             next_page = request.args.get('next')
             flash(f'Сәлем, {user.first_name}! / Добро пожаловать, {user.first_name}!', 'success')
-            return redirect(next_page) if next_page else redirect(url_for('main.index'))
+            return redirect(next_page) if next_page else redirect(url_for('index'))
         else:
             flash('Қате логин немесе құпия сөз / Неверный логин или пароль', 'error')
     

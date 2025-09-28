@@ -28,3 +28,12 @@ class Config:
     
     # Session settings
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
+    
+    # Security settings for cookies
+    SESSION_COOKIE_SECURE = os.environ.get('FLASK_ENV') == 'production'  # Only HTTPS in production
+    SESSION_COOKIE_HTTPONLY = True  # Prevent JavaScript access to session cookies
+    SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection
+    
+    # CSRF settings
+    WTF_CSRF_TIME_LIMIT = 3600  # CSRF token expires in 1 hour (3600 seconds)
+    WTF_CSRF_SSL_STRICT = os.environ.get('FLASK_ENV') == 'production'  # Force HTTPS only in production
